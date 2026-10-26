@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lil Bro Keep</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23fbdc8f%22/%3E%3Cpath d=%22M7 7h18v12l-6 6H7z%22 fill=%22%23fff9e6%22/%3E%3Cpath d=%22M25 19l-6 6v-5a1 1 0 0 1 1-1z%22 fill=%22%23e6b445%22/%3E%3Crect x=%2210%22 y=%2211%22 width=%2212%22 height=%222.2%22 rx=%221.1%22 fill=%22%23c98300%22/%3E%3Crect x=%2210%22 y=%2215.5%22 width=%228.5%22 height=%222.2%22 rx=%221.1%22 fill=%22%23c98300%22 opacity=%22.55%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css?v=20261086">
+</head>
+<body>
+<header>
+  <button class="ib" id="menu" title="Main menu"></button>
+  <div class="logo"><svg class="logo-mark" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#fbdc8f"/><path d="M7 7h18v12l-6 6H7z" fill="#fff9e6"/><path d="M25 19l-6 6v-5a1 1 0 0 1 1-1z" fill="#e6b445"/><rect x="10" y="11" width="12" height="2.2" rx="1.1" fill="#c98300"/><rect x="10" y="15.5" width="8.5" height="2.2" rx="1.1" fill="#c98300" opacity=".55"/></svg><b style="font-weight:400">Lil Bro Keep</b></div>
+  <div class="search"><span id="sico" style="display:grid;place-items:center;width:36px"></span><input id="q" type="search" placeholder="Search" aria-label="Search notes" autocomplete="off" spellcheck="false"></div>
+  <span id="spinslot" role="status" title="Working in the background"><img id="spin" alt="" aria-hidden="true" width="22" height="22" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 width=%2224%22 height=%2224%22%3E%3Cg fill=%22%23d9921a%22%3E%3Crect x=%221%22 y=%229%22 width=%223%22 height=%226%22 rx=%221.5%22%3E%3Canimate attributeName=%22height%22 values=%226;20;6%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.8s%22 repeatCount=%22indefinite%22/%3E%3Canimate attributeName=%22y%22 values=%229;2;9%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.8s%22 repeatCount=%22indefinite%22/%3E%3C/rect%3E%3Crect x=%225.75%22 y=%229%22 width=%223%22 height=%226%22 rx=%221.5%22%3E%3Canimate attributeName=%22height%22 values=%226;20;6%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.6s%22 repeatCount=%22indefinite%22/%3E%3Canimate attributeName=%22y%22 values=%229;2;9%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.6s%22 repeatCount=%22indefinite%22/%3E%3C/rect%3E%3Crect x=%2210.5%22 y=%229%22 width=%223%22 height=%226%22 rx=%221.5%22%3E%3Canimate attributeName=%22height%22 values=%226;20;6%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.4s%22 repeatCount=%22indefinite%22/%3E%3Canimate attributeName=%22y%22 values=%229;2;9%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.4s%22 repeatCount=%22indefinite%22/%3E%3C/rect%3E%3Crect x=%2215.25%22 y=%229%22 width=%223%22 height=%226%22 rx=%221.5%22%3E%3Canimate attributeName=%22height%22 values=%226;20;6%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.2s%22 repeatCount=%22indefinite%22/%3E%3Canimate attributeName=%22y%22 values=%229;2;9%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%22-0.2s%22 repeatCount=%22indefinite%22/%3E%3C/rect%3E%3Crect x=%2220%22 y=%229%22 width=%223%22 height=%226%22 rx=%221.5%22%3E%3Canimate attributeName=%22height%22 values=%226;20;6%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%220s%22 repeatCount=%22indefinite%22/%3E%3Canimate attributeName=%22y%22 values=%229;2;9%22 keyTimes=%220;.5;1%22 calcMode=%22spline%22 keySplines=%22.4 0 .6 1;.4 0 .6 1%22 dur=%221s%22 begin=%220s%22 repeatCount=%22indefinite%22/%3E%3C/rect%3E%3C/g%3E%3C/svg%3E"><svg id="ring" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="#d9921a" stroke-opacity=".28" stroke-width="3"/><circle id="ringarc" cx="16" cy="16" r="13" fill="none" stroke="#d9921a" stroke-width="3" stroke-linecap="round" stroke-dasharray="81.68" stroke-dashoffset="81.68" transform="rotate(-90 16 16)"/><text id="ringtxt" x="16" y="20.6" text-anchor="middle" font-size="13" font-weight="500" fill="#8a5a00" font-family="Roboto,Arial,sans-serif">0</text></svg></span>
+  <span class="sp"></span>
+  <span class="st" id="st" role="status"></span>
+  <button class="ib" id="vm" title="List view"></button>
+</header>
+<div class="wrap">
+  <nav class="side" id="nav">
+    <div id="lbls"></div>
+    <button data-v="trash"><span id="n2" style="display:contents"></span><span>Trash</span></button>
+    <button id="impbtn"><span id="n3" style="display:contents"></span><span>Import</span></button>
+    <button id="expbtn"><span id="n6" style="display:contents"></span><span>Export</span></button>
+    <button id="setbtn"><span id="n5" style="display:contents"></span><span>Settings</span></button>
+  </nav>
+  <main id="notes">
+    <div id="composer"></div>
+    <div id="out"></div>
+  </main>
+</div>
+<script src="js/order.js?v=20261086"></script>
+<script src="js/util.js?v=20261086"></script>
+<script src="js/dialog.js?v=20261086"></script>
+<script src="js/drag.js?v=20261086"></script>
+<script src="js/richtext.js?v=20261086"></script>
+<script src="js/richedit.js?v=20261086"></script>
+<script src="js/model.js?v=20261086"></script>
+<script src="js/format.js?v=20261086"></script>
+<script src="js/media.js?v=20261086"></script>
+<script src="js/folder.js?v=20261086"></script>
+<script src="js/store.js?v=20261086"></script>
+<script src="js/folder-ui.js?v=20261086"></script>
+<script src="js/capture.js?v=20261086"></script>
+<script src="js/gallery.js?v=20261086"></script>
+<script src="js/vgrid.js?v=20261086"></script>
+<script src="js/recorder.js?v=20261086"></script>
+<script src="js/editor.js?v=20261086"></script>
+<script src="js/labels.js?v=20261086"></script>
+<script src="js/takeout.js?v=20261086"></script>
+<script src="js/export.js?v=20261086"></script>
+<script src="js/app.js?v=20261086"></script>
+</body>
+</html>
