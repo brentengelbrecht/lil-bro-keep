@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-def ok(c,m): print(('PASS ' if c else 'FAIL ')+m)
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1200,'height':900})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
@@ -106,3 +106,4 @@ with sync_playwright() as p:
     rt=pg.evaluate("""()=>{const n=blank();n.pos=123456.789;n.ts=1;const html=noteHTML(n);const m=html.match(/keep:meta\\s*([\\s\\S]*?)\\s*-->/);return JSON.parse(m[1]).pos}""")
     ok(rt==123456.789,"pos is written to the note file metadata")
     print('errors',errs); b.close()
+finish()

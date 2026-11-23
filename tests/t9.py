@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-def ok(c,m): print(('PASS ' if c else 'FAIL ')+m)
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1000,'height':900})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
@@ -34,3 +34,4 @@ with sync_playwright() as p:
     ok(e['pin'],"editor: pin button sits above the images")
     pg.screenshot(path='shot_ed2.png')
     print('errors',errs); b.close()
+finish()

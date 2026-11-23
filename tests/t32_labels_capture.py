@@ -1,10 +1,7 @@
 """Renaming and deleting labels from the sidebar; the replace-or-keep-both dialog when a file name is already attached; the camera dialog."""
 from playwright.sync_api import sync_playwright
 import sys,base64
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 PNG=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 INIT="""
 window.__camMode='ok';
@@ -76,4 +73,4 @@ with sync_playwright() as p:
         ev(f"window.__camMode='{mode}'"); pg.click('.ov [data-e=cam]'); pg.wait_for_timeout(500)
         ok(text in pg.inner_text('.dlg.cam .res'),f"{mode}: the dialog explains: {text}"); pg.click('.dlg.cam [data-c=x]'); pg.wait_for_timeout(200)
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

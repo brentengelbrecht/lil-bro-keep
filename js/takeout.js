@@ -62,7 +62,7 @@ function parseTakeout(text,file){
   n.links=[];
   d.querySelectorAll('.chips a[href],a.annotation').forEach(a=>{
     if(a.classList.contains('label-name')||a.closest('.label'))return;
-    try{const u=new URL(a.getAttribute('href')||'');if(/^https?:$/.test(u.protocol)&&!n.links.some(l=>l.url===u.href))n.links.push({url:u.href})}catch(e){}
+    try{const u=new URL(a.getAttribute('href')||'');if(/^https?:$/.test(u.protocol)&&!n.links.some(l=>l.url===u.href))n.links.push({url:u.href})}catch(e){quiet('a link that is not a valid URL is skipped',e)}
   });
   n._refs=refs;
   n.labels=[...new Set([...d.querySelectorAll('.label-name,.chips .label')].map(x=>x.textContent.trim()).filter(Boolean))];
@@ -82,14 +82,22 @@ function parseTakeout(text,file){
    notes never mix with leftovers. In folder mode the notes live in the folder, not in the browser, so only the browser's own leftovers go and the folder's notes stay. */
 async function clearBrowserForImport(){
   if(Store.mode==='browser'){notes.forEach(dropMedia);notes.splice(0);LB.splice(0);return}
-  try{['keep-notes','keep-labels'].forEach(k=>localStorage.removeItem(k))}catch(e){}
-  try{await idb('readwrite',s=>s.clear())}catch(e){}
+  try{['keep-notes','keep-labels'].forEach(k=>localStorage.removeItem(k))}catch(e){quiet('storage is unavailable',e)}
+  try{await idb('readwrite',s=>s.clear())}catch(e){quiet('the media store is unavailable',e)}
   resetMediaCache();
 }
-function importFiles(files,out){return withBusy(()=>importFilesImpl(files,out))}
+/* With encryption set up, imported notes are encrypted like every new note, so the app must be unlocked first. That is asked before the busy spinner starts: nothing is
+   in progress while the passphrase is awaited, and a cancel changes nothing. */
+async function importFiles(files,out){
+  if(Store.crypto.hasVault&&!Store.crypto.unlocked&&!(await Host.unlock())){out.textContent='Import cancelled: unlock to import into encrypted notes.';return}
+  return withBusy(()=>importFilesImpl(files,out));
+}
 async function importFilesImpl(files,out){
   const all=[...files],pages=all.filter(f=>/\.html?$/i.test(f.name));
   if(!pages.length){out.textContent='No HTML note files found in that selection.';return}
+  /* The notes that are already encrypted are read now: their import signatures are inside the encrypted text, and a repeated import is matched by them. */
+  const encrypting=Store.crypto.hasVault;
+  if(encrypting)await Store.loadAll(notes.filter(n=>n.enc));
   await clearBrowserForImport();
   const idx=new Map(),jsons=new Map();
   const dirOf=f=>(f.webkitRelativePath||'').split('/').slice(0,-1).join('/');
@@ -111,19 +119,20 @@ async function importFilesImpl(files,out){
       if(!n){skipped++;continue}
       /* date priority: the note's own heading date, then the matching .json file, then the file's timestamp */
       let jd=null;const jf=jsons.get(stem(f));
-      if(jf)try{jd=JSON.parse(await jf.text())}catch(err){}
+      if(jf)try{jd=JSON.parse(await jf.text())}catch(err){quiet('no JSON file, or not valid JSON: only the page is used',err)}
       if(n._dateSrc==='none'&&jd){
         const c=Number(jd.createdTimestampUsec)/1000,e=Number(jd.userEditedTimestampUsec)/1000;
         if(c||e){n.ts=c||e;n.mod=e||c;n._dateSrc='json'}
       }
       /* bold, italic and underline are only present in the .json export (the HTML export has plain text) */
       if(!n.isList&&jd&&typeof jd.textContentHtml==='string'){
-        try{const x=richOf(jd.textContentHtml);if(x.html&&sameText(x.body,n.body)){n.html=x.html;n.body=x.body}}catch(err){}
+        try{const x=richOf(jd.textContentHtml);if(x.html&&sameText(x.body,n.body)){n.html=x.html;n.body=x.body}}catch(err){quiet('the richer text could not be read: the plain text stays',err)}
       }
       const src=n._dateSrc;delete n._dateSrc;
       n.labels=n.labels.map(addLabel);
       const refs=n._refs;delete n._refs;
       const list=byKey.get(sigKey(n.sig)),ex=list&&list.length?list.shift():null,t=ex||n;
+      if(!ex&&encrypting)n.enc=true;                      // set before any attachment is stored, so the files are encrypted too
       if(ex&&ex.stub&&!(await Store.load(ex))){skipped++;continue}     // the matching note's text is needed to merge into it
       t.att=t.att||[];t.links=t.links||[];
       let changed=false;
@@ -163,6 +172,7 @@ function importDialog(){
     <button class="tile" data-i="files">${ic('file',26)}<span><b>Choose files</b><span class="sub">Select the note files (.html) together with their image, audio and video files</span></span></button>
     <div class="tags" aria-label="What is imported"><i>Text</i><i>Checklists</i><i>Labels</i><i>Links</i><i>Images</i><i>Audio</i><i>Video</i><i>Colors</i><i>Pinned</i><i>Original dates</i></div>
     <p class="hint">Some phone voice memos (.3gp, .amr) may not play in every browser.</p>
+    ${Store.crypto.hasVault?'<p class="hint">Encryption is on, so imported notes are encrypted, and you may be asked for your passphrase.</p>':''}
     <p class="res" aria-live="polite"></p>
     <div class="cl"><button class="done" data-i="x">Close</button></div>
     <input type="file" id="fi" multiple hidden><input type="file" id="fd" webkitdirectory multiple hidden>`});

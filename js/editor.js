@@ -5,7 +5,9 @@
 
 /* ---------- markup (plain functions of the note) ---------- */
 function editorHTML(n,isNew,pal){
-  return `<button class="ib pin${n.pinned?' on':''}" data-e="pin" data-tip="${n.pinned?'Unpin':'Pin'} note" aria-label="${n.pinned?'Unpin':'Pin'} note">${ic('pin',20)}</button>
+  const enc=Store.crypto.hasVault&&!n.plain                // the padlock: encryption on / off for this note; gone for a note already saved unencrypted
+    ?`<button class="ib encb${n.enc?' on':''}" data-e="enc" data-tip="${n.enc?'Encrypted. Click to make this note unencrypted':'Not encrypted. Click to encrypt this note'}" aria-label="${n.enc?'Encrypted note. Make it unencrypted':'Unencrypted note. Encrypt it'}">${ic(n.enc?'lockOn':'lockOff',20)}</button>`:'';
+  return `${enc}<button class="ib pin${n.pinned?' on':''}" data-e="pin" data-tip="${n.pinned?'Unpin':'Pin'} note" aria-label="${n.pinned?'Unpin':'Pin'} note">${ic('pin',20)}</button>
     <div class="escroll">
     <div class="etop"></div>
     <div class="eatt"></div>
@@ -149,6 +151,14 @@ function editor(n,isNew,done){
     lnew:()=>createLabel(el.querySelector('.lq')),
     col:(b,i)=>{n.color=i;draw(null,true)},
     pin:()=>{n.pinned=!n.pinned;moveToTop(n);draw()},
+    enc:()=>{
+      if(n.plain)return;                                  // saved unencrypted once: it can never be encrypted again
+      if(n.enc){
+        if(!confirm('Make this note unencrypted?\n\nWhen it is saved, its text and attachments are stored as readable files in your notes folder (and in any sync service you use). A note saved unencrypted can never be encrypted again.'))return;
+        n.enc=false;
+      }else n.enc=true;                                    // allowed only until the note has been saved unencrypted (the button is gone after that)
+      draw();
+    },
     tick:(b,i)=>{n.items[i].d=!n.items[i].d;draw()},
     rm:(b,i)=>{n.items.splice(i,1);draw()},
     add:()=>{n.items.push({t:'',d:false});draw('.x:last-of-type')},
@@ -226,7 +236,7 @@ function editor(n,isNew,done){
     }
   });
   /* what the page needs from an open editor */
-  el.api={cleanup:recorder.cancel,startRec:recorder.start,linkify:rich.linkify};
+  el.api={cleanup:recorder.cancel,startRec:recorder.start,linkify:rich.linkify,sync};
   draw();
   return el;
 }

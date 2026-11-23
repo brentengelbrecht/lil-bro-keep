@@ -3,10 +3,7 @@ into a new folder, files and links dropped on the editor, the image viewer's pan
 the card's label pop-up and camera button, and how a file is classed as image, audio or video."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 BASE='http://localhost:8765/index.html'
 INIT="FileSystemHandle.prototype.queryPermission=async()=>'granted';FileSystemHandle.prototype.requestPermission=async()=>'granted'"
@@ -142,4 +139,4 @@ with sync_playwright() as p:
     op('DA'); cl(); ok(ev("notes.find(x=>x.id==='DA').mod===undefined"),"opening and closing a note without changing it does not stamp it")
     print('errors',errs); ok(errs==[],"no errors")
     b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

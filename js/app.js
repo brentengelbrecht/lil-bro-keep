@@ -26,6 +26,7 @@ function card(n){
     :(n.body?`<div class="tx">${n.html||h(n.body)}</div>`:'');
   const media=galleryHTML(imagesOf(n),{maxRows:GAL.gridRows})+(n.att||[]).filter(a=>a.kind!=='image').map(a=>a.kind==='video'?`<video data-m="${h(a.id)}" controls preload="metadata"></video>`:`<audio data-m="${h(a.id)}" controls preload="none"></audio>`).join('');
   const ttl=n.stub?(n.idxTitle||''):n.title;          // a note not read yet shows the title its index line kept
+  const sealed=n.enc&&n.stub;                           // an encrypted note that is not unlocked: its card shows only the ciphertext
   const lks=(n.links||[]).length?`<div class="lks">${n.links.map(l=>`<a class="lk" href="${h(l.url)}" target="_blank" rel="noopener noreferrer">${ic('link',16)}<span>${h(linkText(l.url))}</span></a>`).join('')}</div>`:'';
   const cardChip=l=>`<span class="chip"><button class="cl" data-act="lbl" data-l="${h(l)}">${h(l)}</button>${n.trashed?'':`<button class="x" data-act="rmlbl" data-l="${h(l)}" title="Remove label" aria-label="Remove label ${h(l)}">${ic('close',12)}</button>`}</span>`;
   const chips=(n.labels||[]).length?`<div class="chips">${n.labels.map(cardChip).join('')}</div>`:'';
@@ -34,10 +35,10 @@ function card(n){
     :`<button class="ib" data-act="colpick" title="Background options" aria-label="Background options">${ic('palette',20)}</button><button class="ib" data-act="lblpick" title="Add label">${ic('label',20)}</button><button class="ib" data-act="amed" title="Add image or video">${ic('image',20)}</button><button class="ib" data-act="cam" title="Take a photo">${ic('camera',20)}</button><button class="ib" data-act="arec" title="Record audio">${ic('mic',20)}</button><button class="ib" data-act="trash" title="Delete">${ic('trash',20)}</button>`;
   return`<div class="card${media?' hasm':''}" data-id="${h(n.id)}" tabindex="-1" role="article" aria-label="${h(noteLabel(n))}" style="--c:var(--k${n.color})">
   ${n.trashed?'':`<button class="ib pin${n.pinned?' on':''}" data-act="pin" data-tip="${n.pinned?'Unpin':'Pin'} note" aria-label="${n.pinned?'Unpin':'Pin'} note">${ic('pin',20)}</button>`}
-  ${media?`<div class="cm">${media}</div>`:''}<div class="cb">${ttl?`<h3>${h(ttl)}</h3>`:''}${body}${lks}${chips}<div class="acts">${acts}</div></div></div>`;
+  ${media?`<div class="cm">${media}</div>`:''}<div class="cb">${sealed?`<h3 class="sealed">${ic('lockOn',16)}Encrypted note</h3>${n.ct?`<div class="ctx" aria-hidden="true">${h(n.ct.replace(/^LBK\d+\./,'').slice(0,200))}…</div>`:''}`:`${ttl?`<h3>${h(ttl)}</h3>`:''}${body}`}${lks}${chips}<div class="acts">${acts}</div></div></div>`;
 }
 /* Virtual grid glue */
-const cardSig=n=>JSON.stringify([n.stub,n.title,n.body,n.html,n.isList,n.items,n.labels,n.att,n.links,n.color,n.pinned,n.trashed]);
+const cardSig=n=>JSON.stringify([n.stub,n.enc&&n.stub?Store.crypto.unlocked:0,!!n.ct,n.title,n.body,n.html,n.isList,n.items,n.labels,n.att,n.links,n.color,n.pinned,n.trashed]);
 const VGOPT={
   html:n=>card(n),
   sig:cardSig,
@@ -45,7 +46,10 @@ const VGOPT={
     galleryWire(el,(img,id)=>{const m=noteOfCard(img);return m&&m.att.find(a=>a.id===id)},img=>dimsLearned(noteOfCard(img)));
     hydrate(el);
     const m=noteOfCard(el);
-    if(m&&m.stub)Store.load(m).then(ok=>{if(ok)soonRender()});      // the text of a card that has come on screen is read now
+    if(m&&m.stub){
+      if(m.enc&&!Store.crypto.unlocked){if(!m.ct)Store.peek(m).then(soonRender)}      // locked: only the ciphertext is read, to draw the card
+      else Store.load(m).then(ok=>{if(ok)soonRender()});                              // the text of a card that has come on screen is read now
+    }
   },
   gone(id){if(lpEl&&lpNote&&lpNote.id===id)closeLabelPicker()}
 };
@@ -105,7 +109,9 @@ function render(){
   const bar=Store.state!=='cached'?'':`<div class="banner" id="cachebar"><span>${Store.gesturePending?'Showing a saved copy of your notes. Click anywhere to reconnect your folder.':Store.loaded?'Folder access is needed to save your changes. Click anywhere to reconnect.':'Updating from your folder…'}</span>${Store.gesturePending?'<span><button data-act="reconnect">Reconnect</button> <button data-act="usebrowser">Use browser storage</button></span>':''}</div>`;
   /* Only cards in or near the viewport are built (vgrid.js). The page structure (banners, headings, containers) is only
      rebuilt when it changes; otherwise the existing cards are kept and just the ones that changed are replaced. */
-  const sig=bar+o;
+  const lockMsg=q&&Store.crypto.hasVault&&!Store.crypto.unlocked&&Store.state==='ok'
+    ?`<div class="banner" id="srchbar"><span>Encrypted notes aren’t included while locked. Unlock to search them.</span><button data-act="unlock">Unlock</button></div>`:'';
+  const sig=bar+lockMsg+o;
   if(sig!==vgSig){
     vgTeardown();
     $('#out').innerHTML=sig;vgSig=sig;
@@ -125,16 +131,20 @@ function collapsed(){
 }
 $('#composer').addEventListener('click',e=>{
   const c=e.target.closest('[data-c]');if(!c||open)return;
-  const n=blank();n.labels=[...sel];
+  const n=blank();n.labels=[...sel];n.enc=Store.crypto.hasVault;          // with encryption set up, every new note starts encrypted
   if(c.dataset.c==='list'){n.isList=true;n.items=[{t:'',d:false}]}
   openNote=n;open=editor(n,true,finish);
+  Drafts.start(n,true,()=>open&&open.api.sync());
+  ['input','click','keyup','change'].forEach(t=>open.addEventListener(t,Drafts.touch,true));
   $('#composer').innerHTML='';$('#composer').append(open);
   open.querySelector(n.isList?'.x':'.rt').focus();
 });
 function finish(n){
   if(open)open.api.cleanup();
   if(open)open.api.linkify();
-  if(!empty(n)){n.ts=Date.now();notes.unshift(n);save()}
+  const gone=empty(n);
+  if(!gone){n.ts=Date.now();notes.unshift(n);save()}
+  Drafts.end(n,{discard:gone});
   open=null;openNote=null;collapsed();render();
 }
 document.addEventListener('mousedown',e=>{
@@ -142,35 +152,45 @@ document.addEventListener('mousedown',e=>{
 });
 
 /* An outside click only closes an open popover; it doesn't select anything or close the note */
+/* After a press that dismisses something, the click that follows it must not reach whatever was underneath. */
+function swallowNextClick(){
+  const f=ev=>{ev.stopPropagation();ev.preventDefault()};
+  document.addEventListener('click',f,{capture:true,once:true});
+  setTimeout(()=>document.removeEventListener('click',f,true),350);
+}
 document.addEventListener('mousedown',e=>{
   if(e.target.closest('.pal,.lpop,[data-e="color"],[data-e="lbl"]'))return;
   const pops=document.querySelectorAll('.editor .pal:not([hidden]),.editor .lpop:not([hidden])');
   if(!pops.length)return;
   pops.forEach(p=>p.hidden=true);
   e.stopPropagation();
-  const swallow=ev=>{ev.stopPropagation();ev.preventDefault()};
-  document.addEventListener('click',swallow,{capture:true,once:true});
-  setTimeout(()=>document.removeEventListener('click',swallow,true),350);
+  swallowNextClick();
 },true);
 
 /* Edit dialog */
+let editingN=null;
 function openModal(n,opts){
+  if(n.enc&&n.stub&&!Store.crypto.unlocked){Crypt.promptUnlock().then(ok=>{if(ok)openModal(n,opts)});return}   // an encrypted note needs the passphrase first
   if(n.stub){Store.load(n).then(ok=>{if(ok&&!n.stub)openModal(n,opts)});return}   // the note's text is read first
   const opener=document.activeElement,returnId=opener&&opener.closest&&opener.closest('.card')?n.id:null;   // opened from a card: focus goes back to it
   const ov=document.createElement('div');ov.className='ov anim';
   const base=sigOf(n);                       // the note as it was when it was opened
   let closing=false,d=null;
   function close(){
-    if(closing)return;closing=true;
+    if(closing)return;closing=true;editingN=null;
     if(ed){ed.api.cleanup();ed.api.linkify()}
     const gone=empty(n);
     if(gone)notes=notes.filter(x=>x!==n);
     if(gone||sigOf(n)!==base)save();         // nothing is written for a note that was only looked at
+    Drafts.end(n,{discard:gone});            // the draft goes once the note is in the folder
     d.close();                               // the page behind becomes usable again, and the editor flies back out
     render();
     if(returnId)vgFocusCard(returnId);
   }
+  editingN=n;
   const ed=editor(n,false,close);ov.append(ed);
+  Drafts.start(n,false,()=>ed.api.sync());
+  ['input','click','keyup','change'].forEach(t=>ov.addEventListener(t,Drafts.touch,true));
   d=openDialog({overlay:ov,roleEl:ed,label:'Edit note',focus:false,restoreFocus:false,
     onEscape:()=>{                           // Escape first closes an open colour or label picker
       const p=ov.querySelectorAll('.pal:not([hidden]),.lpop:not([hidden])');
@@ -200,22 +220,13 @@ function closeLabelPicker(){
 function lpDown(e){
   if(lpEl.contains(e.target)||e.target.closest('[data-act="lblpick"],[data-act="colpick"]'))return;
   closeLabelPicker();e.stopPropagation();
-  const swallow=ev=>{ev.stopPropagation();ev.preventDefault()};
-  document.addEventListener('click',swallow,{capture:true,once:true});
-  setTimeout(()=>document.removeEventListener('click',swallow,true),350);
+  swallowNextClick();
 }
 function lpKey(e){if(e.key==='Escape'){e.stopPropagation();closeLabelPicker()}}
 function lpScroll(e){if(lpEl&&!lpEl.contains(e.target))closeLabelPicker()}
-/* Background colour picker for the note listing: same floating popover as the label picker, so the card's own scrolling can't clip it. */
-function openColorPicker(n,btn){
-  closeLabelPicker();lpNote=n;lpKind='col';
-  const el=document.createElement('div');el.className='pal cpop';el.setAttribute('role','group');el.setAttribute('aria-label','Background colour');
-  el.innerHTML=NAMES.map((nm,i)=>`<button class="sw${i===n.color?' on':''}" data-i="${i}" style="background:var(--k${i})" title="${nm}" aria-label="${nm}" aria-pressed="${i===n.color}"></button>`).join('');
-  el.addEventListener('click',e=>{
-    const b=e.target.closest('.sw');if(!b)return;
-    n.color=+b.dataset.i;commit();
-    el.querySelectorAll('.sw').forEach(s=>{const on=+s.dataset.i===n.color;s.classList.toggle('on',on);s.setAttribute('aria-pressed',on)});
-  });
+/* Shows a floating popover beside a button: below it if there is room, else above. It closes on an outside press, Escape, scrolling elsewhere or resizing
+   (closeLabelPicker), and is the one popover open at a time (lpEl). */
+function popupAt(el,btn){
   document.body.append(el);
   const r=btn.getBoundingClientRect();
   el.style.left=Math.max(8,Math.min(r.left,innerWidth-el.offsetWidth-8))+'px';
@@ -226,6 +237,18 @@ function openColorPicker(n,btn){
   document.addEventListener('keydown',lpKey,true);
   window.addEventListener('scroll',lpScroll,true);
   window.addEventListener('resize',closeLabelPicker);
+}
+/* Background colour picker for the note listing: same floating popover as the label picker, so the card's own scrolling can't clip it. */
+function openColorPicker(n,btn){
+  closeLabelPicker();lpNote=n;lpKind='col';
+  const el=document.createElement('div');el.className='pal cpop';el.setAttribute('role','group');el.setAttribute('aria-label','Background colour');
+  el.innerHTML=NAMES.map((nm,i)=>`<button class="sw${i===n.color?' on':''}" data-i="${i}" style="background:var(--k${i})" title="${nm}" aria-label="${nm}" aria-pressed="${i===n.color}"></button>`).join('');
+  el.addEventListener('click',e=>{
+    const b=e.target.closest('.sw');if(!b)return;
+    n.color=+b.dataset.i;commit();
+    el.querySelectorAll('.sw').forEach(s=>{const on=+s.dataset.i===n.color;s.classList.toggle('on',on);s.setAttribute('aria-pressed',on)});
+  });
+  popupAt(el,btn);
 }
 function openLabelPicker(n,btn){
   closeLabelPicker();lpNote=n;lpKind='lbl';
@@ -253,16 +276,7 @@ function openLabelPicker(n,btn){
     n.labels=n.labels.includes(l)?n.labels.filter(x=>x!==l):[...n.labels,l];
     apply();
   });
-  fill();document.body.append(el);
-  const r=btn.getBoundingClientRect();
-  el.style.left=Math.max(8,Math.min(r.left,innerWidth-el.offsetWidth-8))+'px';
-  let top=r.bottom+4;if(top+el.offsetHeight>innerHeight-8)top=Math.max(8,r.top-el.offsetHeight-4);
-  el.style.top=top+'px';
-  lpEl=el;input.focus();
-  document.addEventListener('mousedown',lpDown,true);
-  document.addEventListener('keydown',lpKey,true);
-  window.addEventListener('scroll',lpScroll,true);
-  window.addEventListener('resize',closeLabelPicker);
+  fill();popupAt(el,btn);input.focus();
 }
 
 /* Attachments: same-name handling. The new file either replaces the existing one (same position) or gets 1, 2, 3 … added to its name. */
@@ -298,6 +312,7 @@ $('#out').addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');
   if(a&&a.dataset.act==='reconnect'){Store.reconnect();return}
   if(a&&a.dataset.act==='usebrowser'){Store.disconnect();return}
+  if(a&&a.dataset.act==='unlock'){Crypt.promptUnlock();return}
   if(a&&a.dataset.act==='empty'){notes.filter(n=>n.trashed).forEach(dropMedia);notes=notes.filter(n=>!n.trashed);commit();return}
   const c=e.target.closest('.card');if(!c)return;
   if(e.target.closest('video,audio,a'))return;
@@ -350,5 +365,12 @@ $('#expbtn').onclick=()=>{document.body.classList.remove('open');exportDialog()}
 $('#setbtn').onclick=()=>{document.body.classList.remove('open');settingsDialog()};
 collapsed();
 Host.render=render;Host.collapsed=collapsed;
+Host.editingNote=()=>editingN||openNote||null;
+Host.flushed=()=>Drafts.check();
+Host.ready=()=>Drafts.recover();
+Host.crypt=()=>{Crypt.changed();if(q)searchStart();render()};     // unlocking (or locking) while a search is showing runs it again, over the notes that can now be read
+Crypt.changed();                                                  // the lock button is drawn (or hidden) from the start, whatever the storage mode
+Host.unlock=()=>Crypt.promptUnlock();                  // ask for the passphrase; resolves true once the app is unlocked
+Host.needUnlock=()=>{Host.unlock().then(ok=>{if(ok)Store.flush()})};
 Host.editing=()=>!!open||!!document.querySelector('.ov .editor');
 if(wantFolder)Store.boot();else render();

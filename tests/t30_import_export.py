@@ -1,10 +1,7 @@
 """Google Takeout import and the HTML export (characterisation test: describes how they behave today)."""
 from playwright.sync_api import sync_playwright
 import sys,base64,json,re
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 PNG=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 def page(title='',content='',color='',date='',extra='',items=None,pinned=False,trashed=False,labels=(),links=(),images=()):
     cls='note'+(' '+color if color else '')
@@ -115,4 +112,4 @@ with sync_playwright() as p:
     pg.click('#expbtn'); pg.wait_for_timeout(200)
     ok('no notes in the current view' in pg.inner_text('.dlg') and ev("document.querySelector('.dlg [data-x=save]').disabled"),"with nothing shown the save button is disabled")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

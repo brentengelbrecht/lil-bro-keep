@@ -76,7 +76,7 @@ function richEdit(el,sync){
     if(ub)ub.disabled=!undoS;if(rb)rb.disabled=!redoS;
     for(const[k,c]of[['fb','bold'],['fi','italic'],['fu','underline']]){
       const b=el.querySelector(`[data-e="${k}"]`);if(!b)continue;
-      let on=false;try{on=inside&&document.queryCommandState(c)}catch(e){}
+      let on=false;try{on=inside&&document.queryCommandState(c)}catch(e){quiet('queryCommandState can throw when nothing is selected',e)}
       b.classList.toggle('on',on);
     }
   }

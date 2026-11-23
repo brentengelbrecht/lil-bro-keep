@@ -1,7 +1,7 @@
 /* model.js: what a note is, and the state every other file shares.
    Host is how the lower layers (the folder engine) ask the page for things without knowing about it: app.js fills it in at start-up. */
 'use strict';
-const Host={render(){},collapsed(){},editing:()=>false,status(){}};
+const Host={render(){},collapsed(){},editing:()=>false,status(){},crypt(){},needUnlock(){},unlock:()=>Promise.resolve(true),flushed(){},ready(){},editingNote:()=>null};
 let notes=[],LB=[];
 const KEEP_MOD=new Set();     // ids whose modified date must not move on the next save
 const blank=()=>({id:uid(),title:'',body:'',html:'',isList:false,items:[],labels:[],att:[],links:[],color:0,pinned:false,trashed:false,ts:Date.now()});
@@ -22,7 +22,7 @@ function seed(){
   return[a,b];
 }
 /* What changed in a note, as one string: two notes with the same signature are the same note. */
-const sigOf=n=>JSON.stringify([n.title,n.body,n.html,n.isList,n.items,n.labels,n.att,n.links,n.color,n.pinned,n.trashed,n.ts,n.sig,n.pos]);
+const sigOf=n=>JSON.stringify([n.title,n.body,n.html,n.isList,n.items,n.labels,n.att,n.links,n.color,n.pinned,n.trashed,n.ts,n.sig,n.pos,!!n.enc,n.enc?(n.stub?n.lp:n.logPos):0]);      // an encrypted note's place in the deferred-action log counts as a change: it has to be written
 function addLabel(name){
   name=String(name).trim();if(!name)return'';
   const f=LB.find(l=>l.toLowerCase()===name.toLowerCase());if(f)return f;

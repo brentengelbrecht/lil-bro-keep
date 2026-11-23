@@ -14,11 +14,11 @@ function createRecorder(o){
   }
   function cancel(){
     if(!rec)return;const r=rec;rec=null;r.discard=true;clearInterval(r.timer);
-    try{r.mr.stop()}catch(e){}r.stream.getTracks().forEach(t=>t.stop());show();
+    try{r.mr.stop()}catch(e){quiet('the recorder had already stopped',e)}r.stream.getTracks().forEach(t=>t.stop());show();
   }
   function stop(){                                          // resolves once the recording has been saved
     if(!rec)return Promise.resolve();
-    const r=rec;rec=null;clearInterval(r.timer);try{r.mr.stop()}catch(e){}show();return r.finished;
+    const r=rec;rec=null;clearInterval(r.timer);try{r.mr.stop()}catch(e){quiet('the recorder had already stopped',e)}show();return r.finished;
   }
   async function start(){
     if(rec)return;o.say('');

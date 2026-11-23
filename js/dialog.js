@@ -28,7 +28,7 @@ function dlgSetInert(el,on){
   const n=(dlgInert.get(el)||0)+(on?1:-1);
   if(n>0){dlgInert.set(el,n);el.inert=true}else{dlgInert.delete(el);el.inert=false}
 }
-const DLG_FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[contenteditable=true],[tabindex]:not([tabindex="-1"])';
+const DLG_FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]):not(.uname),select:not([disabled]),textarea:not([disabled]),[contenteditable=true],[tabindex]:not([tabindex="-1"])';
 const dlgFocusables=root=>[...root.querySelectorAll(DLG_FOCUSABLE)].filter(e=>!e.hidden&&e.getClientRects().length&&!e.closest('[hidden],[inert]'));
 
 function openDialog(o){
@@ -51,7 +51,7 @@ function openDialog(o){
       inertEls.forEach(e=>dlgSetInert(e,false));
       const done=()=>ov.remove();
       if(o.exit)o.exit(ov,done);else done();
-      if(o.restoreFocus!==false&&opener&&opener.isConnected&&opener.focus&&!opener.closest('[inert]'))try{opener.focus({preventScroll:true})}catch(e){}
+      if(o.restoreFocus!==false&&opener&&opener.isConnected&&opener.focus&&!opener.closest('[inert]'))try{opener.focus({preventScroll:true})}catch(e){quiet('the opener can no longer take focus',e)}
       if(o.onClose)o.onClose(value);
     },
     redraw(html){                                   // replace the content, keeping focus on the same button if it is still there
@@ -93,3 +93,13 @@ document.addEventListener('keydown',e=>{
     else if(!e.shiftKey&&a===f[f.length-1]){e.preventDefault();f[0].focus()}
   }
 },true);
+
+/* A dialog that answers with a value: resolves with whatever wire() last passed to set(), or with `fallback` if it is dismissed. wire(d, set) attaches the
+   dialog's behaviour. opts.after(value), if given, runs when the dialog has closed and before the promise resolves (it may return a promise). */
+function askDialog(opts,wire,fallback=false){
+  return new Promise(res=>{
+    let value=fallback;
+    const d=openDialog({...opts,onClose:async()=>{if(opts.after)await opts.after(value);res(value)}});
+    wire(d,v=>{value=v});
+  });
+}

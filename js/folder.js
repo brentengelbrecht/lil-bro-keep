@@ -1,34 +1,14 @@
-/* folder.js: the folder store. Every note becomes a standalone HTML page in a folder the person chooses (File System Access API, desktop Chrome).
-   This file knows how to read, write, sync and repair that folder. It has no dialogs and no page code: when it needs the page it goes through Host
-   (render, collapsed, editing, status). The dialogs are in folder-ui.js; the rest of the app reaches it through Store (store.js). */
+/* folder.js: the folder store's engine. Every note becomes a standalone HTML page in a folder the person chooses (File System Access API, desktop Chrome).
+   This file decides what is written when (ids, saving, flushing, conflicts, the index), checks the folder against what the app holds (scan, reconcile), and
+   starts, reconnects and disconnects. The pieces it uses are in sibling files, loaded before it: folder-io.js (reading and writing files, where pages live,
+   media, the saved copy), folder-lazy.js (notes known by their details only, search), folder-crypt.js (vault, locking, encrypted pages), folder-labels.js
+   (label rename and delete in stored notes). No dialogs and no page code: when it needs the page it goes through Host. Dialogs are in folder-ui.js;
+   the rest of the app reaches the store through Store (store.js). */
 'use strict';
 let MODE='browser',ROOT=null,fstate='ok',loaded=false,pending=false;
 let lastW=new Map(),lastLB='[]',saveTimer=null,chain=Promise.resolve();
 let gesturePending=false,reqBusy=false,reconciling=false,indexDirty=false,cacheTimer=null;
 const RES=new Set();
-
-/* ---------- remembered folder handle (IndexedDB) ---------- */
-const KV=new Promise((res,rej)=>{
-  try{const r=indexedDB.open('keep-meta',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}
-});
-const kvOp=(mode,fn)=>KV.then(db=>new Promise((res,rej)=>{
-  const t=db.transaction('kv',mode),r=fn(t.objectStore('kv'));
-  t.oncomplete=()=>res(r.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);
-}));
-const kvGet=k=>kvOp('readonly',s=>s.get(k));
-const kvSet=(k,v)=>kvOp('readwrite',s=>s.put(v,k));
-const kvDel=k=>kvOp('readwrite',s=>s.delete(k));
-
-/* ---------- file helpers ---------- */
-async function dirAt(root,parts,create){let d=root;for(const p of parts)d=await d.getDirectoryHandle(p,{create:!!create});return d}
-async function writeFile(root,parts,name,data){
-  const d=await dirAt(root,parts,true),fh=await d.getFileHandle(name,{create:true}),w=await fh.createWritable();
-  try{await w.write(data);await w.close()}catch(e){try{await w.abort()}catch(_){}throw e}
-}
-const readFile=async(root,parts,name)=>(await(await dirAt(root,parts)).getFileHandle(name)).getFile();
-async function removeFile(root,parts,name){try{await(await dirAt(root,parts)).removeEntry(name)}catch(e){}}
-async function has(root,name){try{await root.getFileHandle(name);return true}catch(e){return false}}
-async function hasBuckets(root){for await(const[name,e]of root.entries())if(e.kind==='directory'&&/^\d+$/.test(name))return true;return false}
 
 /* ---------- ids and media ---------- */
 function ensureId(n){
@@ -50,14 +30,10 @@ function warnUnreadable(bad){
 }
 async function scanFolder(report){
   const found=[],bad=new Set();
-  for await(const[name,e]of ROOT.entries()){
-    if(e.kind!=='directory'||!/^\d+$/.test(name))continue;
-    for await(const[fn,fe]of e.entries()){
-      if(fe.kind!=='file'||!/^\d+\.html?$/i.test(fn))continue;
-      let n=null;try{const f=await fe.getFile();n=parseNoteFile(await f.text(),fn);if(n){n.fs=[f.lastModified,f.size];found.push(n)}}catch(err){}
-      if(!n)bad.add(name+'/'+fn);
-      if(report)report(found.length);
-    }
+  for await(const pg of eachPage()){
+    let n=null;try{const f=await pg.entry.getFile();n=await parseNoteAsync(await f.text(),pg.name);if(n){n.fs=[f.lastModified,f.size];found.push(n)}}catch(err){quiet('a page that cannot be read is reported as unreadable',err)}
+    if(!n)bad.add(pg.dir+'/'+pg.name);
+    if(report)report(found.length);
   }
   warnUnreadable(bad);
   return{notes:found,labels:[...new Set(found.flatMap(n=>n.labels))]};
@@ -71,7 +47,7 @@ async function readIndex(){
 function adopt(data){
   notes=data.notes;
   LB=[...new Set([...(data.labels||[]),...notes.flatMap(n=>n.labels)])].sort((a,b)=>a.localeCompare(b));
-  RES.clear();loadFailed.clear();
+  RES.clear();loadFailed.clear();PRIVATE_LABELS.clear();
   lastW=new Map(notes.map(n=>[n.id,sigOf(n)]));lastLB=JSON.stringify(LB);
 }
 async function ensureScaffold(){
@@ -83,20 +59,27 @@ async function ensureScaffold(){
       if(!up.includes('p.content{margin:0}'))up=up.replace(/\s*$/,'\n')+'p.content{margin:0}\n';
       if(!up.includes('.content a:visited'))up=up.replace(/\s*$/,'\n')+LINK_CSS;
       if(!up.includes('.attstrip'))up=up.replace(/\s*$/,'\n')+ATT_CSS;
+      if(!up.includes('pre.ct'))up=up.replace(/\s*$/,'\n')+ENC_CSS;
       if(up!==t)await writeFile(ROOT,[],'styles.css',up);
-    }catch(e){}
+    }catch(e){quiet('a stylesheet that cannot be updated is left as it is',e)}
   }
   if(!(await has(ROOT,'index.html')))await writeFile(ROOT,[],'index.html',indexHTML());
 }
-async function loadFolder(){
+/* opts.unlock: a folder has just been chosen or reconnected, so if it has a vault the passphrase is asked for now (after a plain start the app stays locked until asked). */
+async function loadFolder(opts){
   let data=null;
-  try{data=await readIndex()}catch(e){}
+  try{data=await readIndex()}catch(e){quiet('no readable index: the folder is scanned instead',e)}
   adopt(data||{notes:[],labels:[]});resetMediaCache();
+  LBE.lock();VAULT=null;LOG=null;                                 // the app always starts locked
   MODE='folder';fstate='ok';loaded=true;pending=false;gesturePending=false;
-  try{localStorage.setItem('keep-mode','folder')}catch(e){}
+  try{localStorage.setItem('keep-mode','folder')}catch(e){quiet('storage is unavailable: the mode is only remembered for next time',e)}
   Host.status('');Host.collapsed();Host.render();
   await ensureScaffold();
+  await loadVault();
+  Host.crypt();
   runReconcile();
+  Host.ready();
+  if(opts&&opts.unlock&&VAULT&&!LBE.isUnlocked())setTimeout(()=>Host.unlock(),0);
 }
 
 function folderSave(){
@@ -127,8 +110,6 @@ if(bc)bc.onmessage=e=>{
   if(e.data&&e.data.t==='saved'&&MODE==='folder'&&fstate==='ok'){clearTimeout(syncT);syncT=setTimeout(()=>{if(!pending)runReconcile()},1500)}
 };
 function withLock(fn){return(navigator.locks&&navigator.locks.request)?navigator.locks.request('lil-bro-keep-folder',fn):fn()}
-const existsAt=async(dir,name)=>{try{await(await dirAt(ROOT,dir)).getFileHandle(name);return true}catch(e){return false}};
-const statAt=async(dir,name)=>{try{const f=await(await(await dirAt(ROOT,dir)).getFileHandle(name)).getFile();return[f.lastModified,f.size]}catch(e){return null}};
 async function freeId(){
   let m=0;
   for(const x of notes)if(/^\d+$/.test(x.id))m=Math.max(m,+x.id);
@@ -137,16 +118,16 @@ async function freeId(){
   for await(const[name,e]of ROOT.entries())if(e.kind==='directory'&&/^\d+$/.test(name))top=Math.max(top,+name);
   if(top>=0){const d=await ROOT.getDirectoryHandle(String(top));for await(const[fn]of d.entries()){const mm=/^(\d+)\.html?$/i.exec(fn);if(mm)m=Math.max(m,+mm[1])}}
   let id=m+1;
-  while(await existsAt([String(bucket(id))],id+'.html'))id++;
+  while(await pageExists(id))id++;
   RES.add(id);return String(id);
 }
 /* Called before media is stored for a note that has not been saved yet: makes sure no other copy already owns the number. */
 async function claimId(n){
   if(claimed.has(n.id)||lastW.has(n.id))return;
   await withLock(async()=>{
-    if(await existsAt([String(bucket(n.id))],n.id+'.html'))n.id=await freeId();
+    if(await pageExists(n.id))n.id=await freeId();
     claimed.add(n.id);
-    await writeFile(ROOT,[String(bucket(n.id))],n.id+'.html','<!-- keep:meta\n{"id":"'+n.id+'","placeholder":true}\n-->\n');
+    await writePage(n.id,'<!-- keep:meta\n{"id":"'+n.id+'","placeholder":true}\n-->\n');
   });
 }
 async function keepBoth(n,theirs,cur,todo){
@@ -154,7 +135,7 @@ async function keepBoth(n,theirs,cur,todo){
   Object.assign(copy,{att:[],fs:undefined});
   copy.id=await freeId();claimed.add(copy.id);
   copy.title=(n.title.trim()||'Untitled')+' (conflict copy)';copy.mod=Date.now();
-  for(const a of n.att){try{const bl=await getBlob(a.id);if(bl)addAtt(copy,await putFolderMedia(copy,bl,a.kind,a.name,ROOT,a.w>0&&a.h>0?{w:a.w,h:a.h}:null))}catch(e){}}
+  for(const a of n.att){try{const bl=await getBlob(a.id);if(bl)addAtt(copy,await putFolderMedia(copy,bl,a.kind,a.name,ROOT,a.w>0&&a.h>0?{w:a.w,h:a.h}:null))}catch(e){quiet('an attachment that cannot be copied is left out of the conflict copy',e)}}
   notes.push(copy);todo.push(copy);
   for(const k of Object.keys(n))delete n[k];          // the note itself takes the other copy's version, in place
   Object.assign(n,theirs);n.fs=cur;lastW.set(n.id,sigOf(n));
@@ -164,7 +145,7 @@ async function indexExtras(ids){
   try{
     const d=await readIndex();if(!d)return[];
     const out=[];
-    for(const n of d.notes)if(!ids.has(n.id)&&await existsAt([String(bucket(n.id))],n.id+'.html'))out.push(n);
+    for(const n of d.notes)if(!ids.has(n.id)&&await pageExists(n.id))out.push(n);
     return out;
   }catch(e){return[]}
 }
@@ -178,61 +159,54 @@ async function doFlushLocked(){
   const steps=()=>todo.length+gone.length+1,pr=busyProgress(steps());
   let i=0,k=0,g=0,changedIds=false,wrote=false;
   try{
-  let unread=0;
+  let unread=0,needUnlock=0;
   for(const n of todo){
     pr.set(k++,steps());
-    if(n.stub&&!(await loadNote(n))){unread++;continue}     // never write a page whose text could not be read: it would erase it
-    let dir=[String(bucket(n.id))];
+    if(n.stub&&!n.enc&&!(await loadNote(n))){unread++;continue}     // never write a page whose text could not be read: it would erase it (an encrypted note that is still sealed keeps its ciphertext as it is)
     if(!lastW.has(n.id)){
-      if(!claimed.has(n.id)&&await existsAt(dir,n.id+'.html')){n.id=await freeId();dir=[String(bucket(n.id))];changedIds=true}
+      if(!claimed.has(n.id)&&await pageExists(n.id)){n.id=await freeId();changedIds=true}
     }else{
-      const cur=await statAt(dir,n.id+'.html');
+      const cur=await pageStat(n.id);
       if(cur&&n.fs&&(cur[0]!==n.fs[0]||cur[1]!==n.fs[1])){
         let theirs=null;
-        try{theirs=parseNoteFile(await(await readFile(ROOT,dir,n.id+'.html')).text(),n.id+'.html')}catch(e){}
+        try{theirs=await parseNoteAsync(await(await readPage(n.id)).text(),pageName(n.id))}catch(e){quiet('their page cannot be read: it is treated as gone',e)}
         if(theirs&&sigOf(theirs)!==lastW.get(n.id)){await keepBoth(n,theirs,cur,todo);changedIds=true;wrote=true;continue}
       }
     }
     n.mod=(KEEP_MOD.has(n.id)||!lastW.has(n.id))?(n.mod||n.ts):Date.now();KEEP_MOD.delete(n.id);
-    const s=sigOf(n),html=noteHTML(n);
-    await writeFile(ROOT,dir,n.id+'.html',html);
-    const wf=await readFile(ROOT,dir,n.id+'.html');n.fs=[wf.lastModified,wf.size];
+    let html;
+    try{html=await pageFor(n)}catch(e){if(e&&e.code==='LOCKED'){needUnlock++;continue}throw e}      // an encrypted note cannot be written while the app is locked: it stays pending
+    const s=sigOf(n);
+    await writePage(n.id,html);
+    const wf=await readPage(n.id);n.fs=[wf.lastModified,wf.size];
+    for(const d of (n._del||[]))await removeFile(ROOT,d.dir,d.name);delete n._del;      // plain copies of attachments are in place and the page points to them: the encrypted files can go
+    n.plain=!n.enc;if(n.enc&&!n.stub)noteOpened(n);
     lastW.set(n.id,s);claimed.delete(n.id);wrote=true;
     if(todo.length>20&&++i%20===0)Host.status(`Saving ${i} of ${todo.length}…`);
   }
-  for(const id of gone){pr.set(todo.length+(g++),steps());await removeFile(ROOT,[String(bucket(id))],id+'.html');lastW.delete(id);wrote=true}
+  for(const id of gone){pr.set(todo.length+(g++),steps());await removePage(id);lastW.delete(id);wrote=true}
   pr.set(todo.length+gone.length,steps());
   await writeFile(ROOT,[],'index.html',indexHTML(await indexExtras(new Set(notes.map(n=>n.id)))));
-  lastLB=lbNow;indexDirty=false;pending=false;Host.status('Saved '+clock());cacheSoon();
-  if(wrote&&bc)try{bc.postMessage({t:'saved'})}catch(e){}
+  lastLB=lbNow;indexDirty=false;pending=false;Host.status('Saved '+clock());cacheSoon();Host.flushed();
+  if(wrote&&bc)try{bc.postMessage({t:'saved'})}catch(e){quiet('the other tab is gone',e)}
   if(unread)Host.status(`${unread} note${unread===1?'':'s'} couldn’t be read from the folder, so ${unread===1?'its':'their'} changes were not saved.`,true);
+  if(needUnlock){Host.status(`Unlock to save changes to ${needUnlock===1?'an encrypted note':'encrypted notes'}.`,true);Host.needUnlock()}
   if(changedIds)Host.render();
   }finally{pr.end()}
 }
 window.addEventListener('beforeunload',e=>{if(MODE==='folder'&&pending){e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&MODE==='folder'){if(pending)flush();writeCache()}});
 
-/* ---------- saved copy for instant start ---------- */
-function cacheSoon(){clearTimeout(cacheTimer);cacheTimer=setTimeout(writeCache,4000)}
-async function writeCache(){
-  if(MODE!=='folder'||fstate!=='ok')return;
-  try{await kvSet('cache',{notes:notes.map(exportNote),labels:LB})}catch(e){}
-}
-
 /* ---------- background check of the folder against the index ---------- */
 const idle=()=>new Promise(res=>{const t=()=>Host.editing()?setTimeout(t,600):res();t()});
 async function reconcile(){
   const byId=new Map(notes.map(n=>[n.id,n])),base=new Map(notes.map(n=>[n.id,n.fs?n.fs.join():''])),seen=new Set(),changes=[],bad=new Set();
-  for await(const[name,e]of ROOT.entries()){
-    if(e.kind!=='directory'||!/^\d+$/.test(name))continue;
-    for await(const[fn,fe]of e.entries()){
-      if(fe.kind!=='file'||!/^\d+\.html?$/i.test(fn))continue;
-      const id=fn.replace(/\.html?$/i,'');seen.add(id);
-      const f=await fe.getFile(),fs=[f.lastModified,f.size],cur=byId.get(id);
-      if(cur&&cur.fs&&cur.fs.join()===fs.join())continue;
-      let n=null;try{n=parseNoteFile(await f.text(),fn);if(n){n.fs=fs;changes.push(n)}}catch(err){}
-      if(!n)bad.add(name+'/'+fn);
-    }
+  for await(const pg of eachPage()){
+    seen.add(pg.id);
+    const f=await pg.entry.getFile(),fs=[f.lastModified,f.size],cur=byId.get(pg.id);
+    if(cur&&cur.fs&&cur.fs.join()===fs.join())continue;
+    let n=null;try{n=await parseNoteAsync(await f.text(),pg.name);if(n){n.fs=fs;changes.push(n)}}catch(err){quiet('a page that cannot be read is reported as unreadable',err)}
+    if(!n)bad.add(pg.dir+'/'+pg.name);
   }
   warnUnreadable(bad);
   return{changes,removed:notes.filter(n=>n.fs&&!seen.has(n.id)).map(n=>n.id),base};
@@ -277,93 +251,16 @@ async function runReconcile(){
   cacheSoon();
 }
 
-/* ---------- notes known by their details only (lazy loading) ----------
-   At start-up the index gives every note's details (colour, pin, labels, attachments, dates, a title for its link) but not its text. Such a note is a
-   "stub" (n.stub). Its page is read when a card for it is drawn, when it is opened, before it is rewritten, exported or searched.
-   Reading a page never counts as an edit: lastW is brought in step so the note is not written back. */
-const loading=new Map(),loadFailed=new Set();
-async function readNoteFile(n){                       // {p: the parsed page, fs: the file's date and size}, or null
-  try{
-    const f=await readFile(ROOT,[String(bucket(n.id))],n.id+'.html'),p=parseNoteFile(await f.text(),n.id+'.html');
-    return p?{p,fs:[f.lastModified,f.size]}:null;
-  }catch(e){return null}
-}
-function applyLoaded(n,r){
-  const clean=lastW.get(n.id)===sigOf(n),p=r.p;
-  if(clean){                                          // nothing changed here since the index: the page is the whole truth
-    for(const k of Object.keys(n))delete n[k];
-    Object.assign(n,p);n.fs=r.fs;lastW.set(n.id,sigOf(n));
-  }else{                                              // a pending change (pin, colour, label...) stays; only the text comes from the page
-    Object.assign(n,{title:p.title,body:p.body,html:p.html,items:p.items,isList:p.isList});
-    delete n.stub;delete n.idxTitle;n.fs=r.fs;
-  }
-}
-function loadNote(n){                                 // resolves true once the note has its text
-  if(!n.stub)return Promise.resolve(true);
-  if(MODE!=='folder'||!ROOT||fstate!=='ok'||loadFailed.has(n.id))return Promise.resolve(false);
-  if(!loading.has(n.id))loading.set(n.id,(async()=>{
-    try{const r=await readNoteFile(n);if(!r){loadFailed.add(n.id);return false}if(n.stub)applyLoaded(n,r);return true}
-    finally{loading.delete(n.id)}
-  })());
-  return loading.get(n.id);
-}
-async function loadMany(list){                        // a few pages at a time; resolves true if every note was read
-  const todo=list.filter(n=>n.stub);let ok=true,i=0;
-  await Promise.all(Array.from({length:Math.min(8,todo.length)},async()=>{while(i<todo.length){if(!(await loadNote(todo[i++])))ok=false}}));
-  return ok;
-}
-/* Search: looks through the pages of notes that are not loaded. A match is loaded and reported with onHit(id). current() says whether this search is still the one wanted. */
-async function searchFiles(s,current,onHit){
-  if(MODE!=='folder'||!ROOT||fstate!=='ok')return;
-  busyStart();
-  try{
-    for(const n of notes.slice()){
-      if(!current())return;
-      if(!n.stub)continue;
-      const r=await readNoteFile(n);
-      if(!current())return;
-      if(r&&noteText(r.p).includes(s)&&n.stub){applyLoaded(n,r);onHit(n.id)}
-    }
-  }finally{busyEnd()}
-}
-
-/* ---------- label rename / delete: bring stored notes in line ---------- */
-/* In folder mode every note the app knows is already in memory and is rewritten by the normal save, so after that
-   completes this pass only needs to open the note files the app doesn't know about (for example, added outside
-   the app) and fix those. In browser mode the save itself already rewrote everything. */
-function relabelStored(old,nv){
-  if(MODE!=='folder')return Promise.resolve();
-  chain=chain.then(()=>withBusy(async()=>{
-    Host.status(nv?'Updating label…':'Removing label…');
-    await doFlush();
-    const known=new Set(notes.map(n=>n.id));
-    let fixed=0;
-    for await(const[dirName,e]of ROOT.entries()){
-      if(e.kind!=='directory'||!/^\d+$/.test(dirName))continue;
-      for await(const[fn,fe]of e.entries()){
-        if(fe.kind!=='file'||!/^\d+\.html?$/i.test(fn)||known.has(fn.replace(/\.html?$/i,'')))continue;
-        try{
-          const n=parseNoteFile(await(await fe.getFile()).text(),fn);
-          if(!n||!n.labels.includes(old))continue;
-          n.labels=[...new Set(nv?n.labels.map(l=>l===old?nv:l):n.labels.filter(l=>l!==old))];
-          await writeFile(ROOT,[dirName],fn,noteHTML(n));fixed++;
-        }catch(err){}
-      }
-    }
-    Host.status(fixed?`Saved. Also updated ${fixed} other note file${fixed===1?'':'s'}.`:'Saved '+clock());
-  })).catch(e=>Host.status('Couldn’t update stored notes: '+((e&&e.message)||e),true));
-  return chain;
-}
-
 /* ---------- startup, reconnect, disconnect ---------- */
 async function bootFolder(){busyStart();try{await bootFolderImpl()}finally{busyEnd()}}
 async function bootFolderImpl(){
   fstate='loading';Host.render();
-  let hd=null;try{hd=await kvGet('dir')}catch(e){}
-  if(!hd){try{localStorage.removeItem('keep-mode')}catch(e){}location.reload();return}
+  let hd=null;try{hd=await kvGet('dir')}catch(e){quiet('no remembered folder',e)}
+  if(!hd){try{localStorage.removeItem('keep-mode')}catch(e){quiet('storage is unavailable',e)}location.reload();return}
   ROOT=hd;
-  let p='prompt';try{p=await hd.queryPermission({mode:'readwrite'})}catch(e){}
-  let cache=null;try{cache=await kvGet('cache')}catch(e){}
+  Host.crypt();                                                  // the Lock button shows at once if a vault is known, before the folder can be read
+  let p='prompt';try{p=await hd.queryPermission({mode:'readwrite'})}catch(e){quiet('the permission cannot be queried: it is treated as needing a click',e)}
+  let cache=null;try{cache=await kvGet('cache')}catch(e){quiet('there is no saved copy',e)}
   const haveCache=!!(cache&&Array.isArray(cache.notes));
   if(haveCache){
     notes=cache.notes.map(normNote);LB=(cache.labels||[]).slice();
@@ -375,52 +272,43 @@ async function bootFolderImpl(){
 async function reconnectFolder(){
   if(reqBusy)return;reqBusy=true;
   let ok=false;
-  try{ok=(await ROOT.requestPermission({mode:'readwrite'}))==='granted'}catch(e){}
+  try{ok=(await ROOT.requestPermission({mode:'readwrite'}))==='granted'}catch(e){quiet('the permission request failed: the person can try again',e)}
   reqBusy=false;
   if(!ok)return;
   gesturePending=false;
-  if(loaded){fstate='ok';Host.render();flush()}else await loadFolder();
+  if(loaded){fstate='ok';Host.render();flush()}else await loadFolder({unlock:true});
 }
 /* Stops using the folder and clears everything this browser holds (the saved copy, browser-stored notes and labels, their media), so the app starts again
    from its first view: the two welcome notes. The files in the folder are not touched. */
 async function disconnectFolder(){
-  try{await kvDel('dir');await kvDel('cache')}catch(e){}
-  try{['keep-mode','keep-notes','keep-labels'].forEach(k=>localStorage.removeItem(k))}catch(e){}
-  try{await idb('readwrite',s=>s.clear())}catch(e){}
+  try{await kvDel('dir');await kvDel('cache')}catch(e){quiet('nothing remembered to forget',e)}
+  try{['keep-mode','keep-notes','keep-labels','keep-draft','keep-vault'].forEach(k=>localStorage.removeItem(k))}catch(e){quiet('storage is unavailable',e)}
+  try{await idb('readwrite',s=>s.clear())}catch(e){quiet('the media store is unavailable',e)}
   resetMediaCache();
   location.reload();
 }
 
-/* ---------- media files in the folder ---------- */
-async function putFolderMedia(n,blob,kind,name,dest,dim){
-  ensureId(n);
-  if(dest===ROOT)await claimId(n);
-  const dir=['media',{image:'images',video:'video',audio:'audio'}[kind]||'images',String(bucket(n.id))];
-  const used=new Set((n.att||[]).map(a=>a.id));
-  let k=1,path;
-  do{path=dir.join('/')+'/'+n.id+'-'+(k++)+'.'+extOf(name,blob.type)}while(used.has(path));
-  await writeFile(dest,dir,path.split('/').pop(),blob);
-  return{id:path,kind,name,...dim};
-}
-Media.readPath=path=>{const p=path.split('/'),n=p.pop();return ROOT?readFile(ROOT,p,n):Promise.resolve(null)};
-Media.removePath=id=>{const p=id.split('/'),n=p.pop();if(ROOT)removeFile(ROOT,p,n)};
-
 /* ---------- operations the dialogs use ---------- */
+/* The notes that can be copied into another folder. From browser storage: all of them. From a folder: the notes that are readable without a key and have been
+   read; an encrypted note belongs to its own folder's vault and stays there. */
+function copyableNotes(){return MODE==='folder'?notes.filter(n=>!n.enc&&!n.stub):notes}
 /* Does this folder already hold notes? (Saves anything pending first and forgets the saved copy.) */
 async function inspectFolder(hd){
-  await flush();try{await kvDel('cache')}catch(e){}
+  await flush();try{await kvDel('cache')}catch(e){quiet('there is no saved copy to remove',e)}
   return (await has(hd,'index.html'))||(await hasBuckets(hd));
 }
 /* Start using hd. o.load: read the notes already in it. Otherwise o.copy says whether the notes now in the app are copied into it.
    o.report(text) is told how far it has got. */
 async function attachFolder(hd,o){
   const say=o.report||(()=>{});
-  if(o.load){ROOT=hd;await kvSet('dir',hd);await loadFolder();return}
+  const fresh=await commitPendingEncryption(hd);          // encryption chosen while picking the folder: its vault goes into the folder first
+  if(o.load){ROOT=hd;await kvSet('dir',hd);await loadFolder({unlock:!fresh});if(fresh)adoptPendingEncryption();return}
   if(o.copy){
-    const src=JSON.parse(JSON.stringify(notes)).sort((a,b)=>a.ts-b.ts);
+    const src=JSON.parse(JSON.stringify(copyableNotes())).sort((a,b)=>a.ts-b.ts);
     let seq=0,done=0;const total=src.reduce((s,n)=>s+(n.att||[]).length,0);
     for(const n of src){
       n.id=String(++seq);
+      if(fresh&&!n.plain&&!n.enc)n.enc=true;                  // notes from this browser are encrypted when the folder gets encryption, like imported ones
       const old=n.att||[];n.att=[];
       for(const a of old){
         const blob=await getBlob(a.id);if(!blob)continue;
@@ -432,9 +320,10 @@ async function attachFolder(hd,o){
   }else{notes=[];LB=[]}
   RES.clear();
   ROOT=hd;MODE='folder';fstate='ok';loaded=true;lastW=new Map();lastLB='[]';resetMediaCache();
-  try{localStorage.setItem('keep-mode','folder')}catch(e){}
+  try{localStorage.setItem('keep-mode','folder')}catch(e){quiet('storage is unavailable: the mode is only remembered for next time',e)}
   await kvSet('dir',hd);
   await ensureScaffold();
+  if(fresh)adoptPendingEncryption();
   say('Writing notes…');
   await doFlush();
   Host.collapsed();Host.render();

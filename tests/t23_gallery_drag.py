@@ -1,10 +1,7 @@
 """Image reordering in the note editor: mouse drag, press-and-hold, cancel paths, keyboard, buttons, and that a click still opens the viewer."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1200,'height':1600})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
@@ -60,4 +57,4 @@ with sync_playwright() as p:
     e2=e[:]; e2[1],e2[2]=e2[2],e2[1]; ok(ids()==e2,"the 'move earlier' button works")
     ok(stored()==ids(),"stored order matches")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

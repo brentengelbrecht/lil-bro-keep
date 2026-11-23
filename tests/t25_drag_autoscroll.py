@@ -1,10 +1,7 @@
 """Dragging near the top or bottom edge scrolls: the page for cards, the note for images in the editor."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1200,'height':700})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
@@ -37,4 +34,4 @@ with sync_playwright() as p:
     ok(s2<s1-100,f"and to the top edge scrolls back ({s1} -> {s2})")
     pg.keyboard.press('Escape'); pg.mouse.up(); pg.wait_for_timeout(300)
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

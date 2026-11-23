@@ -1,6 +1,11 @@
 /* util.js: small shared helpers and UI services that everything else may use (icons, escaping, busy indicator, toast).
    Depends on nothing else in the app. */
 'use strict';
+/* A failure that is expected and safe to ignore: a permission probe, an optional file that is not there, a best-effort clean-up. Saying why makes each one
+   deliberate and easy to find. To see them in the console while debugging, run localStorage.setItem('keep-debug','1') and reload. */
+const quiet=(why,err)=>{if(quiet.on)console.debug('[ignored] '+why,err)};
+quiet.on=(()=>{try{return localStorage.getItem('keep-debug')==='1'}catch(e){return false}})();
+
 const P={
 cboxo:"M19 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.11 0 2-.9 2-2V5c0-1.1-.89-2-2-2zm0 16H5V5h14v14zM17.99 9l-1.41-1.42-6.59 6.59-2.58-2.57-1.42 1.41 4 3.99z",
 download:"M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11z",

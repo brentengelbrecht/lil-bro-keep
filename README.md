@@ -28,7 +28,7 @@ It is plain HTML, CSS and JavaScript: no build step, no frameworks, no server, n
 
 ## Getting started
 
-1. Download or clone this repository. Alternatively, run it from https://brentengelbrecht.github.io/lil-bro-keep/.
+1. Download or clone this repository. Alternatively, run it from https://lilbrokeep.github.io.
 2. Open `index.html` in **desktop Chrome**. You can double-click it (no web server needed).
 3. Start writing notes. Out of the box, they are saved in the browser.
 4. To keep your notes in a folder you can sync and back up, open **Settings** in the sidebar and choose a notes folder (see [Notes folder storage](#notes-folder-storage)).
@@ -209,6 +209,26 @@ The pin icon pins and unpins the note. Pinning moves it to the top of the Pinned
 Notes save automatically. A note you only looked at is never rewritten, and its dates stay as they were.
 
 ---
+
+## Encryption
+
+Encryption protects the text, checklist, labels, links and attachments of your notes with a passphrase. It works with a notes folder (not with browser-only storage).
+
+- **Set up:** Settings → Encryption → *Set up encryption*. Choose a passphrase (about five random words is strong) and save the **recovery key** you are shown once. **A forgotten passphrase cannot be recovered**; the recovery key is the only way back in.
+- **Choosing a notes folder asks for encryption first.** When you choose a folder that has no encryption yet, the set-up dialog comes before anything else: you choose a passphrase and save the recovery key, and only then is the usual question about loading or copying notes asked. Cancelling stops the whole change and leaves the folder untouched. Notes you copy in from this browser are encrypted; notes already in the folder stay as they are.
+- **New notes start encrypted.** Notes you already had stay as they are. In the editor, the **padlock** button next to the pin shows (closed = encrypted) whether the note is encrypted.
+- **Making a note unencrypted** (padlock → confirm) is permanent once it is saved: its text and attachments become readable files, and it can never be encrypted again.
+- **Locked and unlocked:** the app starts locked. Notes that are not encrypted work as usual; an encrypted note shows only "Encrypted note" until you unlock (open it, or use the lock button in the sidebar). The app locks itself after 5 minutes without use.
+- **In the folder:** an encrypted note's page shows only its dates, colour and pin state; everything else is an unreadable block. Attachments are encrypted `.enc` files. Short notes are padded so their length is not obvious. `vault.json` holds the keys, wrapped by your passphrase.
+- **Renaming or deleting a label** reaches encrypted notes even when the app is locked: the change is recorded, encrypted, in `actions.log` in the notes folder and done to those notes the next time you unlock (in the background; a note not opened yet is updated when it is read). Until then the old label name still shows on those notes.
+- **Forgot your passphrase?** Unlock with the recovery key (*Use recovery key* in the unlock dialog); the app then asks you to set a new passphrase. The same is in Settings → Encryption → *Change passphrase* → *Forgot your passphrase?*. The recovery key keeps working afterwards.
+- **Choosing or reconnecting a folder that has encryption** opens the unlock dialog straight away (cancel it to look at the folder locked).
+- **The Lock button** is in the sidebar from the start of every session, before the folder has been reconnected; clicking it reconnects the folder and then asks for the passphrase.
+- **Saving the passphrase:** a web page cannot write to your computer's keychain. The set-up, unlock and change dialogs are ordinary password forms, so your browser's password manager (Chrome's, or iCloud Keychain in Safari) can offer to save the passphrase and fill it in next time. That is your choice, and it trades some protection for convenience: anyone who can use your unlocked browser can then fill it in. The recovery key is never offered to the password manager.
+- **Search** finds encrypted notes only while the app is unlocked. While locked it searches your unencrypted notes and says so; unlocking runs the search again.
+- **Export** leaves out encrypted notes while the app is locked, and says how many.
+- **Import** (Google Takeout) with encryption on needs the app unlocked, and the imported notes, labels, links and attachments are encrypted. Importing the same files again matches the notes already there.
+- **Unsaved edits are kept.** While you edit a note in a notes folder, the app keeps a copy in this browser and removes it once the note is saved. If the browser closes or crashes first, the next start offers to continue or discard those edits. **That copy is not encrypted, even for an encrypted note**: closing the note writes it encrypted to the folder and deletes the copy, so finish and close notes you care about.
 
 ## Everything else
 

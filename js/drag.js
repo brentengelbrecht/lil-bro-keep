@@ -33,7 +33,7 @@ function dragGesture(root,o){
     clearTimeout(p.timer);pend=null;
     g={el:p.el,pid:p.pid,type:p.type,x0:p.x0,y0:p.y0,x:p.x,y:p.y};
     if(o.begin(g)===false){g=null;document.removeEventListener('touchmove',onTouch);return}
-    try{g.el.setPointerCapture(g.pid)}catch(err){}
+    try{g.el.setPointerCapture(g.pid)}catch(err){quiet('pointer capture is refused when the pointer is already gone',err)}
     window.addEventListener('keydown',onKey,true);        // on window, so a drag in progress gets Escape before any dialog does
     raf=requestAnimationFrame(loop);
   }
@@ -55,7 +55,7 @@ function dragGesture(root,o){
     const d=g;if(!d)return;
     cancelAnimationFrame(raf);
     window.removeEventListener('keydown',onKey,true);document.removeEventListener('touchmove',onTouch);
-    try{d.el.releasePointerCapture(d.pid)}catch(err){}
+    try{d.el.releasePointerCapture(d.pid)}catch(err){quiet('the pointer capture was already released',err)}
     const sw=ev=>{ev.stopPropagation();ev.preventDefault()};
     root.addEventListener('click',sw,{capture:true,once:true});
     setTimeout(()=>root.removeEventListener('click',sw,true),0);

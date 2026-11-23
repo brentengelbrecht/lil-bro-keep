@@ -67,9 +67,10 @@ ${LINK_CSS}${ATT_CSS}ul.list{margin:0;padding:0;list-style:none}
 .idxlist .m{flex:none;font-size:.8em;color:var(--mut)}
 .sw{flex:none;width:14px;height:14px;border:1px solid var(--line);border-radius:3px}
 .sub{color:var(--mut)}
-`;
+${ENC_CSS}`;
 }
 const noteTitle=n=>{
+  if(n.enc)return'Encrypted note';                        // an encrypted note never shows its title outside the app
   if(n.stub)return n.idxTitle||('Note '+n.id);            // known by its details only: the title the index kept
   const t=n.title.trim()||(n.isList?((n.items.find(i=>i.t.trim())||{}).t||''):n.body.trim().split('\n')[0])||('Note '+n.id);
   return t.length>90?t.slice(0,90)+'…':t;
@@ -106,11 +107,46 @@ ${n.links.length?`<div class="links">${n.links.map(l=>`<a href="${h(l.url)}">${h
 </html>
 `;
 }
+/* ---------- encrypted notes ----------
+   An encrypted note's page keeps in plain sight only what the app needs to sort and sync it: dates, colour, pinned and trashed state, the names of its
+   attachment files, and the encryption settings. The title, text, checklist, labels, links and the original attachment names are one encrypted token
+   (see encrypt.js), shown in the page as text that only the app can read. */
+const ENC_CSS='pre.ct{margin:12px 0 0;font:.7em/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mut)}\n';
+const PRIVATE_LABELS=new Set();   // labels used by encrypted notes: kept out of the index unless an unencrypted note uses them too
+function sealedHTML(n,token){
+  const iv=(token.split('.')[1]||''),files=n.stub?(n.files||[]):(n.att||[]).map(a=>a.id);
+  const lp=n.stub?n.lp:n.logPos;                          // how much of the deferred-action log this note has been brought up to (also inside the ciphertext)
+  const meta={v:1,id:n.id,created:isoOffset(n.ts),modified:isoOffset(n.mod||n.ts),pos:n.pos,color:n.color,pinned:n.pinned,trashed:n.trashed,
+    enc:{v:1,iv},files,...(lp!==undefined?{lp}:{})};
+  const cm=JSON.stringify(meta,null,2).replace(/--/g,'-\\u002d');
+  const flags=[n.pinned&&!n.trashed?'Pinned':'',n.trashed?'In trash':''].filter(Boolean).join(' · ');
+  return`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encrypted note</title>
+<link rel="stylesheet" href="../styles.css">
+<!-- keep:meta
+${cm}
+-->
+</head>
+<body>
+<article class="nc c${n.color}">
+${flags?`<div class="status">${flags}</div>\n`:''}<p class="content">This note is encrypted. Open it in Lil Bro Keep.</p>
+<pre class="ct">${token}</pre>
+<div class="dates">Created <time datetime="${isoOffset(n.ts)}">${h(fdate(n.ts))}</time></div>
+</article>
+</body>
+</html>
+`;
+}
 /* The saved copy keeps every note that has been read in full; a note known by its details only stays that way. */
-const exportNote=n=>({id:n.id,title:n.title,body:n.body,html:n.html,isList:n.isList,items:n.items,labels:n.labels,att:n.att,links:n.links,
+const exportNote=n=>n.enc?({id:n.id,isList:false,title:'',body:'',html:'',items:[],labels:[],att:[],links:[],color:n.color,pinned:n.pinned,trashed:n.trashed,
+  ts:n.ts,mod:n.mod,pos:n.pos,fs:n.fs,enc:true,stub:true,idxTitle:'Encrypted note',lp:n.stub?n.lp:n.logPos}):({plain:n.plain||undefined,id:n.id,title:n.title,body:n.body,html:n.html,isList:n.isList,items:n.items,labels:n.labels,att:n.att,links:n.links,
   color:n.color,pinned:n.pinned,trashed:n.trashed,ts:n.ts,mod:n.mod,pos:n.pos,sig:n.sig,fs:n.fs,stub:n.stub||undefined,idxTitle:n.stub?n.idxTitle:undefined});
 /* One line of the index: a link title and the details the app needs to draw a card and order, filter and sync notes. No note text. */
-const indexEntry=n=>({id:n.id,t:noteTitle(n),isList:n.isList,labels:n.labels,att:n.att,links:n.links,color:n.color,pinned:n.pinned,trashed:n.trashed,ts:n.ts,mod:n.mod,pos:n.pos,sig:n.sig,fs:n.fs});
+const indexEntry=n=>n.enc?{id:n.id,t:'Encrypted note',enc:true,color:n.color,pinned:n.pinned,trashed:n.trashed,ts:n.ts,mod:n.mod,pos:n.pos,fs:n.fs,lp:n.stub?n.lp:n.logPos}:({id:n.id,t:noteTitle(n),isList:n.isList,labels:n.labels,att:n.att,links:n.links,color:n.color,pinned:n.pinned,trashed:n.trashed,ts:n.ts,mod:n.mod,pos:n.pos,sig:n.sig,fs:n.fs});
 const normNote=o=>{
   const n=Object.assign(blank(),o);
   n.id=String(o.id);n.title=n.title||'';n.body=n.body||'';n.html=n.html?cleanRich(n.html):'';delete n.archived;
@@ -120,9 +156,9 @@ const normNote=o=>{
 /* An index line becomes a note known by its details only (a stub): its page is read when it is needed (folder.js loadNote).
    An index written by an earlier version holds whole notes; those are used as they are. */
 function fromIndexEntry(e){
-  if(e.title!==undefined||e.body!==undefined)return normNote(e);
-  const n=normNote({...e,stub:true,idxTitle:e.t,title:'',body:'',html:'',items:[]});
-  delete n.t;return n;
+  if(e.title!==undefined||e.body!==undefined){const o=normNote(e);o.plain=!e.enc;return o}
+  const n=normNote({...e,stub:true,idxTitle:e.enc?'Encrypted note':e.t,title:'',body:'',html:'',items:[]});
+  delete n.t;n.plain=!e.enc;return n;
 }
 function indexHTML(extra){
   const all=[...notes,...(extra||[])];
@@ -130,9 +166,9 @@ function indexHTML(extra){
   const sec=(title,f)=>{
     const l=all.filter(f).sort(byOrder);
     if(!l.length)return'';
-    return`<h2>${title} <small>(${l.length})</small></h2>\n<ul class="idxlist">\n${l.map(n=>`<li><a href="${bucket(n.id)}/${n.id}.html"><span class="sw c${n.color}"></span><span class="t">${h(noteTitle(n))}</span></a><span class="m">${n.labels.length?h(n.labels.join(', '))+' · ':''}${h(fdate(n.ts))}</span></li>`).join('\n')}\n</ul>\n`;
+    return`<h2>${title} <small>(${l.length})</small></h2>\n<ul class="idxlist">\n${l.map(n=>`<li><a href="${bucket(n.id)}/${n.id}.html"><span class="sw c${n.color}"></span><span class="t">${h(noteTitle(n))}</span></a><span class="m">${!n.enc&&n.labels.length?h(n.labels.join(', '))+' · ':''}${h(fdate(n.ts))}</span></li>`).join('\n')}\n</ul>\n`;
   };
-  const data=JSON.stringify({v:2,labels:LB,notes:all.map(indexEntry)}).replace(/</g,'\\u003c');
+  const data=JSON.stringify({v:2,labels:LB.filter(l=>!PRIVATE_LABELS.has(l)||all.some(n=>!n.enc&&(n.labels||[]).includes(l))),notes:all.map(indexEntry)}).replace(/</g,'\\u003c');
   return`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -160,6 +196,16 @@ function parseNoteFile(text,fname){
   const d=new DOMParser().parseFromString(text,'text/html');
   const n=blank();
   n.id=String(meta.id!=null?meta.id:fname.replace(/\.html?$/i,''));
+  if(meta.enc){                                   // an encrypted page: only the details in its head are readable (see sealedHTML); the text is a token to decrypt
+    n.enc=true;n.stub=true;n.idxTitle='Encrypted note';
+    n.color=meta.color||0;n.pinned=!!meta.pinned;n.trashed=!!meta.trashed;
+    n.ts=Date.parse(meta.created)||Date.now();n.mod=Date.parse(meta.modified)||n.ts;
+    if(typeof meta.pos==='number'&&isFinite(meta.pos))n.pos=meta.pos;
+    n.files=Array.isArray(meta.files)?meta.files:[];
+    if(typeof meta.lp==='number')n.lp=meta.lp;
+    n.ct=((d.querySelector('pre.ct')||{}).textContent||'').trim()||undefined;
+    return n;
+  }
   n.title=(d.querySelector('.title')||{}).textContent||'';
   n.isList=!!meta.list;
   if(n.isList)n.items=[...d.querySelectorAll('.listitem')].map(r=>({t:(r.querySelector('.text')||{}).textContent||'',d:r.classList.contains('done')}));
@@ -172,5 +218,6 @@ function parseNoteFile(text,fname){
   n.ts=Date.parse(meta.created)||Date.now();n.mod=Date.parse(meta.modified)||n.ts;
   if(typeof meta.pos==='number'&&isFinite(meta.pos))n.pos=meta.pos;
   if(meta.sig)n.sig=meta.sig;
+  n.plain=true;                                  // this note is stored unencrypted: it can never be encrypted
   return n;
 }

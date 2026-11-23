@@ -4,10 +4,7 @@ two copies adding a note at the same moment never reuse a number or lose a note,
 and an edit to the same note in both copies keeps both versions."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 BASE='http://localhost:8765/index.html'
 with sync_playwright() as p:
     b=p.chromium.launch(); cx=b.new_context(viewport={'width':1100,'height':800})
@@ -68,4 +65,4 @@ with sync_playwright() as p:
     ok('Both B' not in titles(B),f"a note deleted in copy A disappears from copy B ({titles(B)})")
     print('errors',errs); ok(errs==[],"no errors in either copy")
     b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

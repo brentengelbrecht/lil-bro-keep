@@ -21,18 +21,27 @@ async function pickFolder(out,started){          // started() is called once the
   let hd;
   try{hd=await showDirectoryPicker({id:'keep-notes',mode:'readwrite'})}catch(e){return ''}
   say('Checking folder…');
-  const existing=await Store.inspect(hd);
-  if(existing){
-    if(!confirm(`“${hd.name}” already contains notes. Load them into the app?\n\nNotes currently in the app are not copied into it.`)){say('');return ''}
+  const working=async f=>{busyStart();try{return await f()}finally{busyEnd()}};       // the spinner runs only while something is being done, not while a question is waiting
+  try{
+    const existing=await working(()=>Store.inspect(hd));
+    /* A folder without encryption gets it set up first, before anything else is done with it. Cancelling stops the whole change. */
+    const hadVault=await Store.vaultIn(hd);
+    /* A folder with a vault but no notes has nothing left that the vault protects: it starts over, and its old vault is replaced when the change goes ahead. */
+    if((!hadVault||!existing)&&!(await Crypt.setupDialog({pending:true,folder:hd.name,replacing:hadVault&&!existing}))){say('');return ''}
+    if(existing){
+      if(!confirm(`“${hd.name}” already contains notes. Load them into the app?\n\nNotes currently in the app are not copied into it.`)){say('');return ''}
+      started&&started();
+      await working(()=>Store.attach(hd,{load:true}));
+      return say(`Loaded ${notes.length} note${notes.length===1?'':'s'} from “${hd.name}”.`);
+    }
+    let copy=false;
+    if(Store.mode==='folder')await working(()=>Store.loadAll(notes.filter(n=>!n.enc)));      // notes not read yet are read, so that they can be copied
+    const cp=Store.copyable().length,left=notes.length-cp;
+    if(cp)copy=confirm(`Copy the ${cp} note${cp===1?'':'s'} currently in the app into “${hd.name}”?${left?`\n\n(${left} encrypted or unread note${left===1?' stays':'s stay'} in the current folder.)`:''}\n\nOK = copy them. Cancel = start with an empty folder.`);
     started&&started();
-    await Store.attach(hd,{load:true});
-    return say(`Loaded ${notes.length} note${notes.length===1?'':'s'} from “${hd.name}”.`);
-  }
-  let copy=false;
-  if(notes.length)copy=confirm(`Copy the ${notes.length} note${notes.length===1?'':'s'} currently in the app into “${hd.name}”?\n\nOK = copy them. Cancel = start with an empty folder.`);
-  started&&started();
-  await Store.attach(hd,{copy,report:t=>{out.textContent=t}});
-  return say(`Saving to “${hd.name}”. ${notes.length} note${notes.length===1?'':'s'} written.`);
+    await working(()=>Store.attach(hd,{copy,report:t=>{out.textContent=t}}));
+    return say(`Saving to “${hd.name}”. ${notes.length} note${notes.length===1?'':'s'} written.`);
+  }finally{Store.discardPendingEncryption()}                                           // encryption prepared for a folder that was not used leaves no trace
 }
 
 /* ---------- settings dialog ---------- */
@@ -46,6 +55,7 @@ function settingsDialog(){
     ${ok?'':'<p class="hint">Folder storage needs desktop Chrome.</p>'}
     ${inF?'<p class="hint">If Chrome asks about folder access when you open the app, choose “Allow on every visit” so it reconnects by itself.</p>':''}
     <button class="big${inF?' out':''}" data-s="choose"${ok?'':' disabled'}>${inF?'Change folder…':'Choose notes folder…'}</button>
+    ${conn?Crypt.settingsHTML():''}
     ${conn?`<p class="cap">Advanced</p><div class="alist"><button class="arow" data-s="rebuild" title="Read every note page in the folder and rebuild the list">Rescan folder<u>›</u></button><button class="arow" data-s="css" title="Write a fresh styles.css into the folder">Rewrite stylesheet<u>›</u></button><button class="arow x" data-s="disc" title="Stop saving to the folder and go back to this browser only">Disconnect folder<u>›</u></button></div>`:''}
     <p class="res" aria-live="polite">${h(msg||'')}</p>
     <div class="cl"><button class="done" data-s="x">Close</button></div>`;
@@ -60,9 +70,12 @@ function settingsDialog(){
       if(k==='x')d.close();
       else if(k==='choose'){
         let closed=false;
-        const t=await withBusy(()=>pickFolder(out,()=>{closed=true;d.close()}));   // once a folder is chosen and confirmed, the writing runs in the background
+        const t=await pickFolder(out,()=>{closed=true;d.close()});                  // once a folder is chosen and confirmed, the writing runs in the background
         if(closed){Host.render();if(t)toast(t,{ms:6000})}else draw(t)
       }
+      else if(k==='enc-setup'){await Crypt.setupDialog();draw()}
+      else if(k==='enc-lock'){if(Store.crypto.unlocked)await Store.lock();else await Crypt.promptUnlock();draw()}
+      else if(k==='enc-change'){await Crypt.changeDialog();draw()}
       else if(k==='css'){await Store.rewriteStyles();say('Stylesheet rewritten.')}
       else if(k==='disc'){if(confirm('Stop using the folder? The files stay where they are.\n\nEverything this browser holds is cleared (the saved copy of your notes and any notes stored in this browser), and the app starts again with its two welcome notes.'))await Store.disconnect()}
       else if(k==='rebuild'){

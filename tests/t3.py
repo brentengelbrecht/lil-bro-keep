@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-def ok(c,m): print(('PASS ' if c else 'FAIL ')+m)
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1000,'height':800})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
@@ -31,3 +31,4 @@ with sync_playwright() as p:
     ok(pg.evaluate("getComputedStyle(document.querySelector('.card[data-id=\"%s\"]')).backgroundColor"%cid)!='rgba(0, 0, 0, 0)',"card shows background")
     pg.hover(C); pg.wait_for_timeout(350); pg.click(C+' [data-act=colpick]'); pg.screenshot(path='shot_pal.png',clip={'x':250,'y':100,'width':750,'height':450})
     print('errors',errs); b.close()
+finish()

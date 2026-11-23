@@ -1,10 +1,7 @@
 """Every dialog: announced as a dialog, the page behind is inert, focus goes in and stays in, Escape closes the top one only, focus comes back."""
 from playwright.sync_api import sync_playwright
 import sys,base64
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 PNG=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 INIT="""navigator.mediaDevices.getUserMedia=async o=>{const c=document.createElement('canvas');c.width=64;c.height=48;const g=c.getContext('2d');const d=()=>{g.fillStyle='#08f';g.fillRect(0,0,64,48);requestAnimationFrame(d)};d();return c.captureStream(10)};"""
 with sync_playwright() as p:
@@ -79,4 +76,4 @@ with sync_playwright() as p:
     pg.keyboard.press('Enter'); pg.wait_for_timeout(600); pg.mouse.click(20,450); pg.wait_for_timeout(700)
     ok(pg.locator('.ov').count()==0,"pressing outside the editor closes it")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

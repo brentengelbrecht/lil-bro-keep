@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-def ok(c,m): print(('PASS ' if c else 'FAIL ')+m)
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1000,'height':800})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
@@ -55,3 +55,4 @@ with sync_playwright() as p:
     pg.evaluate("document.querySelector('.editor img,.eatt img')&&document.querySelector('.editor img,.eatt img').click()"); pg.wait_for_timeout(500)
     ok(pg.evaluate("document.querySelector('.ivimg')?document.querySelector('.ivimg').style.getPropertyValue('--rot')||'0deg':'none'") in ('0deg','none'),"closing and reopening the viewer starts with no rotation")
     print('errors',errs); b.close()
+finish()

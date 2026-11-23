@@ -1,10 +1,7 @@
 """Image-layout geometry: row grouping, row sizes at a 600 px width, drop and step order, viewer base size. Numbers are the spec's section 11.1 cases."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 near=lambda a,b,t=0.6: abs(a-b)<=t
 # aspect ratios (width/height) -> expected rows of [w,h] tiles, container 600 px wide, gap 2 px
 cases={
@@ -50,10 +47,10 @@ with sync_playwright() as p:
     ok(near(v[1]['h'],800,.01) and near(v[1]['w'],266.67,.01),"viewer: tall image fits the height")
     ok(near(v[2]['w'],1000,.01) and near(v[2]['h'],333.33,.01),"viewer: very wide image fits the width")
     # every script runs in strict mode: reading .caller on a sloppy function gives null, on a strict one it throws
-    fns={'order':'topKey','util':'busyStart','dialog':'dlgSetInert','drag':'dragGesture','richtext':'safeHref','richedit':'linkifyAll','model':'partAtt','format':'attTile','media':'resetMediaCache','folder':'ensureId','store':'addMedia','folder-ui':'setStatus','capture':'uniqueName','gallery':'groupRows','vgrid':'vgEstimate','recorder':'createRecorder','editor':'editorHTML','labels':'labelNavClick','takeout':'parseHeadingDate','export':'exportList','app':'visible'}
+    fns={'order':'topKey','util':'busyStart','dialog':'dlgSetInert','drag':'dragGesture','richtext':'safeHref','richedit':'linkifyAll','model':'partAtt','format':'attTile','media':'resetMediaCache','folder':'ensureId','store':'addMedia','folder-ui':'setStatus','folder-io':'bucketDir','folder-lazy':'loadNote','folder-crypt':'noteOpened','folder-labels':'relabelStored','encrypt':'LilBroEncrypt.checkPassphraseStrength','crypt-ui':'Crypt.settingsHTML','drafts':'Drafts.check','capture':'uniqueName','gallery':'groupRows','vgrid':'vgEstimate','recorder':'createRecorder','editor':'editorHTML','labels':'labelNavClick','takeout':'parseHeadingDate','export':'exportList','app':'visible'}
     res=ev("""fns=>Object.fromEntries(Object.entries(fns).map(([f,n])=>{try{const fn=eval(n);fn.caller;return[f,false]}catch(e){return[f,e instanceof TypeError]}}))""",fns)
     ok(all(res.values()),"every script runs in strict mode"+('' if all(res.values()) else f" (sloppy: {[k for k,v in res.items() if not v]})"))
     ok(len(res)==ev("[...document.scripts].filter(s=>s.src).length"),"the strict-mode check covers every script on the page")
     ok(errs==[],f"no page errors {errs}")
     b.close()
-sys.exit(1 if ok.bad else 0)
+finish()

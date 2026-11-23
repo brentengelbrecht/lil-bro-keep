@@ -5,15 +5,15 @@
 'use strict';
 let rawNotes=null,notesUnreadable=false;
 notes=null;                               // nothing loaded yet (model.js starts it as an empty list)
-try{rawNotes=localStorage.getItem('keep-notes')}catch(e){}
+try{rawNotes=localStorage.getItem('keep-notes')}catch(e){quiet('storage is unavailable: start empty',e)}
 try{notes=JSON.parse(rawNotes)}catch(e){notesUnreadable=!!rawNotes}
 if(rawNotes&&notes!==null&&!Array.isArray(notes))notesUnreadable=true;
 if(notesUnreadable){                      // never let the next save silently replace data that exists but could not be read
-  try{localStorage.setItem('keep-notes-unreadable-'+Date.now(),rawNotes)}catch(e){}
+  try{localStorage.setItem('keep-notes-unreadable-'+Date.now(),rawNotes)}catch(e){quiet('storage is full: the unreadable copy could not be kept',e)}
   setTimeout(()=>toast('Your saved notes couldn’t be read, so sample notes are shown. The unreadable data was kept in this browser (keys starting “keep-notes-unreadable”).'),600);
 }
 if(!Array.isArray(notes))notes=seed();
-try{LB=JSON.parse(localStorage.getItem('keep-labels'))||[]}catch(e){}
+try{LB=JSON.parse(localStorage.getItem('keep-labels'))||[]}catch(e){quiet('no labels stored',e)}
 if(!Array.isArray(LB))LB=[];
 notes.forEach(n=>{n.labels=n.labels||[];n.att=partAtt(n.att);n.links=n.links||[];n.html=n.html?cleanRich(n.html):'';delete n.archived;n.labels.forEach(l=>{if(!LB.includes(l))LB.push(l)})});
 LB.sort((a,b)=>a.localeCompare(b));
@@ -60,9 +60,21 @@ const Store={
   addMedia,                                      // store an attachment, returns its record {id,kind,name,w,h}
   boot:()=>bootFolder(), reconnect:()=>reconnectFolder(), disconnect:()=>disconnectFolder(),
   flush:()=>flush(),
+  isSaved:n=>MODE!=='folder'||(lastW.get(n.id)===sigOf(n)&&!(n._del&&n._del.length)),   // is this note, as it is now, what the folder holds?
+  peek:n=>peekSealed(n),                         // folder only: read a locked encrypted note's ciphertext so its card can show it
   load:n=>loadNote(n),                           // read a note's text if it is not loaded yet (folder only); resolves true when it has its text
   loadAll:l=>loadMany(l),                        // the same for a list of notes
   search:(s,current,onHit)=>searchFiles(s,current,onHit),   // folder only: look through the pages of notes that are not loaded
+  /* encryption (folder only): the passphrase protects notes whose mask is on; the app always starts locked */
+  get crypto(){return{available:MODE==='folder'&&fstate==='ok',hasVault:!!VAULT||vaultHint(),unlocked:LBE.isUnlocked()}},
+  vaultIn:hd=>has(hd,'vault.json'),                // does this folder already have encryption set up?
+  prepareEncryption:p=>prepareEncryption(p),        // asked while picking a folder: nothing is written until attach() goes ahead
+  discardPendingEncryption:()=>discardPendingEncryption(),
+  copyable:()=>copyableNotes(),
+  setupEncryption:p=>setupEncryption(p),          // creates the vault; resolves with the recovery key (shown once)
+  unlock:p=>unlockApp(p), unlockWithRecoveryKey:k=>unlockWithRecovery(k), lock:()=>lockApp(),
+  changePassphrase:(a,b)=>changePassphraseApp(a,b),
+  resetPassphrase:(key,next)=>resetPassphraseApp(key,next),      // forgotten passphrase: the recovery key sets a new one
   relabel:(a,b)=>relabelStored(a,b),             // a label was renamed or removed: bring stored notes in line
   // used by the folder dialogs
   inspect:hd=>inspectFolder(hd), attach:(hd,o)=>attachFolder(hd,o), rescan:r=>rescanFolder(r), rewriteStyles:()=>rewriteStyles(),

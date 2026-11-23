@@ -11,7 +11,7 @@ const idb=(mode,fn)=>DB.then(db=>new Promise((res,rej)=>{
   t.oncomplete=()=>res(r.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);
 }));
 let asked=false;
-const putBlob=(id,b)=>{if(!asked){asked=true;try{navigator.storage.persist()}catch(e){}}return idb('readwrite',s=>s.put(b,id))};
+const putBlob=(id,b)=>{if(!asked){asked=true;try{navigator.storage.persist()}catch(e){quiet('asking for persistent storage is only a request',e)}}return idb('readwrite',s=>s.put(b,id))};
 const isPath=id=>String(id).includes('/');
 const getBlob=id=>isPath(id)?Media.readPath(id):idb('readonly',s=>s.get(id));
 const URLS=new Map();
@@ -45,7 +45,7 @@ function removeBlob(id){
   if(isPath(id))Media.removePath(id);
   else idb('readwrite',s=>s.delete(id)).catch(()=>{});
 }
-const dropMedia=n=>(n.att||[]).forEach(a=>removeBlob(a.id));
+const dropMedia=n=>[...(n.att||[]).map(a=>a.id),...(n.files||[])].forEach(removeBlob);     // n.files: the files of an encrypted note that has not been unlocked (its attachment list is not readable)
 
 /* Which kind of attachment is this file? 'image' | 'video' | 'audio' | '' */
 const mediaKindOf=f=>/^image\//.test(f.type)?'image':/^video\//.test(f.type)?'video':/^audio\//.test(f.type)?'audio':'';

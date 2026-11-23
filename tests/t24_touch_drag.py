@@ -1,10 +1,7 @@
 """Touch: press-and-hold then move reorders (cards in the grid, images in the editor); a quick swipe is a scroll and reorders nothing."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 with sync_playwright() as p:
     b=p.chromium.launch(); ctx=b.new_context(viewport={'width':1200,'height':1600},has_touch=True); pg=ctx.new_page()
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
@@ -53,4 +50,4 @@ with sync_playwright() as p:
     ok(ids()==['G6']+base[:6],f"press-and-hold then move reorders images: {ids()}")
     ok(pg.evaluate("document.querySelectorAll('.ov.iv').length")==0,"no viewer opened by the touch drag")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

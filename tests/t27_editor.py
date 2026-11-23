@@ -1,10 +1,7 @@
 """The note editor, feature by feature (characterisation test: it describes how the editor behaves today)."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 INIT="""
 window.__opened=[];window.open=(u)=>{window.__opened.push(u);return null};
@@ -120,4 +117,4 @@ with sync_playwright() as p:
     pg.click('#composer [data-c=list]'); pg.wait_for_timeout(300); ok(ev("document.querySelectorAll('#composer .li').length")==1,"the list button starts a checklist")
     pg.click('#composer [data-e=done]'); pg.wait_for_timeout(500); ok(ev("notes.length")==1,"an empty new list is not kept")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

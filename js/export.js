@@ -27,6 +27,9 @@ ${parts}
 }
 async function saveExport(list,out){
   await Store.loadAll(list);                              // notes not read yet are read first
+  const sealed=list.filter(n=>n.stub&&n.enc);             // encrypted notes that are locked cannot be exported
+  if(sealed.length)list=list.filter(n=>!(n.stub&&n.enc));
+  const left=sealed.length?` ${sealed.length} encrypted note${sealed.length===1?' was':'s were'} left out because the app is locked.`:'';
   const d=new Date(),suggested=`lil-bro-keep-${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}.html`;
   const base=nm=>nm.replace(/\.[^.]+$/,'');
   if(window.showSaveFilePicker){
@@ -35,12 +38,12 @@ async function saveExport(list,out){
     catch(e){if(e&&e.name==='AbortError'){out.textContent='';return}throw e}
     const html=exportHTML(list,base(fh.name));          // the heading is the file name that was chosen
     const w=await fh.createWritable();await w.write(html);await w.close();
-    out.textContent=`Saved ${list.length} note${list.length===1?'':'s'} to “${fh.name}”.`;
+    out.textContent=`Saved ${list.length} note${list.length===1?'':'s'} to “${fh.name}”.${left}`;
   }else{
     const html=exportHTML(list,base(suggested));
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=suggested;
     document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-    out.textContent=`Downloaded ${list.length} note${list.length===1?'':'s'} as “${suggested}”. This browser saves to its download folder.`;
+    out.textContent=`Downloaded ${list.length} note${list.length===1?'':'s'} as “${suggested}”. This browser saves to its download folder.${left}`;
   }
 }
 function exportDialog(){

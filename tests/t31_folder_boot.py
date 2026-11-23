@@ -4,10 +4,7 @@ The browser's own way of remembering a folder (a handle in IndexedDB) crashes th
 by a stand-in that returns the folder; everything after the lookup is the app's normal code."""
 from playwright.sync_api import sync_playwright
 import sys
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m)
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 INIT="""
 FileSystemHandle.prototype.queryPermission=async()=>localStorage.getItem('__perm')||'granted';
 FileSystemHandle.prototype.requestPermission=async()=>localStorage.getItem('__req')||'granted';
@@ -78,4 +75,4 @@ with sync_playwright() as p:
     ev("localStorage.setItem('keep-mode','folder')"); start('granted',nodir=True); pg.wait_for_timeout(1500)
     ok(ev("localStorage.getItem('keep-mode')") is None and ev("Store.mode")=='browser',"folder mode with no remembered folder falls back to browser mode")
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()

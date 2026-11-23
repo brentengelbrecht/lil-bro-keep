@@ -35,7 +35,7 @@ function vgEstimate(n,cw){
   h+=media?12:4;                                        // padding of the coloured block (no top padding when the card has no media)
   const tt=n.stub?(n.idxTitle||''):n.title;             // a note not read yet: its index title and a guess at two lines of text
   if(tt)h+=Math.max(1,Math.ceil(tt.length*9.7/(inner-28)))*26.6+8;
-  if(n.stub)h+=58;
+  if(n.stub)h+=n.enc?110:58;
   if(n.isList){
     let lh=0;
     for(const it of n.items||[])lh+=Math.max(1,Math.ceil((it.t||'').length*8.7/(inner-34)))*25.3+9;

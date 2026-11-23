@@ -1,7 +1,7 @@
 # Lil Bro Keep: how the code is organised
 
 Plain `<script>` files, not ES modules (modules are blocked when a page is opened from disk). They are loaded in the order below, which is the order in `index.html`. **A file may only use things defined in files above it.**
-The one deliberate way back up is `Host` (in `model.js`): four hooks (`render`, `collapsed`, `editing`, `status`) that `app.js` and `folder-ui.js` fill in at start-up.
+The one deliberate way back up is `Host` (in `model.js`): hooks (`render`, `collapsed`, `editing`, `status`, `crypt`, `needUnlock`, `editingNote`) that `app.js` and `folder-ui.js` fill in at start-up.
 
 ## Files
 
@@ -28,9 +28,16 @@ Scripts, in load order:
 | `model.js` | what a note is (`blank`, `sigOf`), shared state (`notes`, `LB`, `KEEP_MOD`), colour names, the `Host` hooks |
 | `format.js` | the notes folder's file format as pure functions: `noteHTML`, `parseNoteFile`, `indexHTML`, the generated stylesheet. No folder access, no page |
 | `media.js` | attachment data: IndexedDB blobs, object URLs, image sizes (`measureImage`), `hydrate()`. The folder engine registers how to read and remove files through `Media` |
-| `folder.js` | the folder store: reading, writing, syncing, conflicts, locks, repair. **No dialogs and no markup.** It tells the person things only through `toast`, the busy indicator and `Host.status`, and reaches the page only through `Host` |
+| `folder-io.js` | the folder store's file layer: the remembered folder handle, reading and writing files, where a note's page lives (`bucketDir`, `readPage`, `writePage`, `eachPage`), the media files in the folder, the saved copy for instant start |
+| `folder-crypt.js` | encryption in the folder store: the vault (`vault.json`), unlock and lock, reading and writing encrypted pages, making a note's attachments plain again, the deferred-action log (`actions.log`) |
+| `folder-lazy.js` | notes known by their details only (stubs) and the background search through unread pages |
+| `folder-labels.js` | renaming or deleting a label in notes already stored |
+| `folder.js` | the folder store's engine: ids, saving and flushing, conflicts, the index, scan and reconcile, start-up, reconnect, disconnect. Uses the four files above, loaded before it |
 | `store.js` | **the persistence interface** (`Store`), the browser backend (localStorage), `addMedia`, and `commit()` |
+| `encrypt.js` | **all** encryption and decryption (Web Crypto, no dependencies): the vault, note bodies, chunked attachments, passphrase strength, idle lock. Loads before `folder.js`; knows nothing about notes or the page. A classic script (works from `file://`), tested alone in node |
 | `folder-ui.js` | what people see about the folder: status line, reconnect prompt, choose-folder and Settings dialogs |
+| `drafts.js` | editor drafts (see AGENTS.md): a plain-text copy of the open note in localStorage until it is saved, a Web Lock per session to tell a crash from an open tab, and the continue/discard prompt at start. Uses `Store` and the editor's `api.sync` |
+| `crypt-ui.js` | the encryption dialogs (set up with strength meter and recovery key, unlock, change passphrase), the sidebar lock button and the idle lock. Reaches the engine only through `Store` |
 | `capture.js` | getting attachments into a note: name clashes (`uniqueName`), the replace-or-keep-both question (`askReplace`), the camera (`takePhoto`) |
 | `gallery.js` | image rows (`groupRows`, `galleryHTML`, `galleryWire`), what is specific to dragging images and moving them with the keyboard (`galleryEditor`), and the full-window image viewer |
 | `vgrid.js` | the virtual masonry grid: only cards near the viewport exist; what is specific to dragging cards (slot, placeholder); keyboard movement between cards |

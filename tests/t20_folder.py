@@ -2,10 +2,7 @@
 Uses only: the DOM, the files in the folder, and a handful of app entry points (mapped in API below)."""
 from playwright.sync_api import sync_playwright
 import sys,re
-def ok(c,m):
-    print(('PASS ' if c else 'FAIL ')+m); 
-    if not c: ok.bad+=1
-ok.bad=0
+from harness import ok,finish
 BASE='http://localhost:8765/index.html'
 # entry points the test needs; the refactor may rename these, only this map changes
 API="""
@@ -92,4 +89,4 @@ with sync_playwright() as p:
     pg.click('#setbtn'); pg.wait_for_timeout(300); ok(pg.locator('.ov').count()>=1,"settings dialog opens")
     pg.keyboard.press('Escape'); pg.wait_for_timeout(300)
     print('errors',errs); b.close()
-print('FAILURES:',ok.bad); sys.exit(1 if ok.bad else 0)
+finish()
