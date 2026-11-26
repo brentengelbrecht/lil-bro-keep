@@ -28,7 +28,7 @@ It is plain HTML, CSS and JavaScript: no build step, no frameworks, no server, n
 
 ## Getting started
 
-1. Download or clone this repository. Alternatively, run it from https://lilbrokeep.github.io.
+1. Download or clone this repository. Alternatively, run it from [https://brentengelbrecht.github.io/lil-bro-keep](https://brentengelbrecht.github.io/lil-bro-keep/).
 2. Open `index.html` in **desktop Chrome**. You can double-click it (no web server needed).
 3. Start writing notes. Out of the box, they are saved in the browser.
 4. To keep your notes in a folder you can sync and back up, open **Settings** in the sidebar and choose a notes folder (see [Notes folder storage](#notes-folder-storage)).
