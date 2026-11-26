@@ -100,12 +100,14 @@ const Crypt=(()=>{
   /* ---------- unlock: resolves true once the app is unlocked ---------- */
   let unlockP=null;
   /* The folder has to be reachable to read the vault: a new browser session starts without that, so the first click asks for it. */
-  async function promptUnlock(){
+  /* opts.once: the prompt the app opens by itself (at start, when a folder is chosen or reconnected) gets one attempt: a wrong passphrase closes it and the app
+     stays locked, and the person has to use Unlock in the sidebar to try again. A dialog the person opens (the sidebar, an encrypted note) lets them retry. */
+  async function promptUnlock(opts){
     if(Store.crypto.unlocked)return true;
     if(Store.state!=='ok'){await Store.reconnect();if(Store.state!=='ok')return false}
-    return unlockP||(unlockP=showUnlock().finally(()=>{unlockP=null}));
+    return unlockP||(unlockP=showUnlock(opts).finally(()=>{unlockP=null}));
   }
-  function showUnlock(){
+  function showUnlock(opts){
     const opener=document.activeElement;
     let mode='pass',usedKey=null;
     const html=()=>mode==='pass'
@@ -139,10 +141,13 @@ const Crypt=(()=>{
       onSubmit(d,async()=>{
         const v=d.panel.querySelector('#pw').value;
         if(!v){say(d,mode==='pass'?'Enter your passphrase.':'Enter your recovery key.');return}
+        let lastErr=null;
         const ok=await submitting(d,'Unlock','Unlocking…',async()=>{
-          if(mode==='pass'){await Store.unlock(v);offerToSave(v)}else{await Store.unlockWithRecoveryKey(v);usedKey=v}
+          try{if(mode==='pass'){await Store.unlock(v);offerToSave(v)}else{await Store.unlockWithRecoveryKey(v);usedKey=v}}
+          catch(e){lastErr=e;throw e}
         },err=>wrongKey(err)?(mode==='pass'?'Wrong passphrase.':'Wrong recovery key.'):'Couldn’t unlock: '+((err&&err.message)||err));
-        if(ok){set(true);d.close()}
+        if(ok){set(true);d.close();return}
+        if(opts&&opts.once&&wrongKey(lastErr)){d.close();toast((mode==='pass'?'Wrong passphrase':'Wrong recovery key')+'. The app is locked: use Unlock in the sidebar to try again.')}
       });
       onClick(d,{cancel:()=>d.close(),alt:()=>{mode=mode==='pass'?'key':'pass';d.redraw(html());focus()}});
     });

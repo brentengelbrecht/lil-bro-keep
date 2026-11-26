@@ -28,7 +28,7 @@ It is plain HTML, CSS and JavaScript: no build step, no frameworks, no server, n
 
 ## Getting started
 
-1. Download or clone this repository. Alternatively, run it from [https://brentengelbrecht.github.io/lil-bro-keep](https://brentengelbrecht.github.io/lil-bro-keep/).
+1. Download or clone this repository. Alternatively, run it [https://brentengelbrecht.github.io/lil-bro-keep](https://brentengelbrecht.github.io/lil-bro-keep/).
 2. Open `index.html` in **desktop Chrome**. You can double-click it (no web server needed).
 3. Start writing notes. Out of the box, they are saved in the browser.
 4. To keep your notes in a folder you can sync and back up, open **Settings** in the sidebar and choose a notes folder (see [Notes folder storage](#notes-folder-storage)).
@@ -222,7 +222,7 @@ Encryption protects the text, checklist, labels, links and attachments of your n
 - **In the folder:** an encrypted note's page shows only its dates, colour and pin state; everything else is an unreadable block. Attachments are encrypted `.enc` files. Short notes are padded so their length is not obvious. `vault.json` holds the keys, wrapped by your passphrase.
 - **Renaming or deleting a label** reaches encrypted notes even when the app is locked: the change is recorded, encrypted, in `actions.log` in the notes folder and done to those notes the next time you unlock (in the background; a note not opened yet is updated when it is read). Until then the old label name still shows on those notes.
 - **Forgot your passphrase?** Unlock with the recovery key (*Use recovery key* in the unlock dialog); the app then asks you to set a new passphrase. The same is in Settings → Encryption → *Change passphrase* → *Forgot your passphrase?*. The recovery key keeps working afterwards.
-- **Choosing or reconnecting a folder that has encryption** opens the unlock dialog straight away (cancel it to look at the folder locked).
+- **Starting the app, choosing a folder or reconnecting one that has encryption** opens the unlock dialog straight away. A correct passphrase unlocks the notes; you get one attempt: cancel it, or enter a wrong passphrase, and the app starts locked. Use Unlock in the sidebar to try again.
 - **The Lock button** is in the sidebar from the start of every session, before the folder has been reconnected; clicking it reconnects the folder and then asks for the passphrase.
 - **Saving the passphrase:** a web page cannot write to your computer's keychain. The set-up, unlock and change dialogs are ordinary password forms, so your browser's password manager (Chrome's, or iCloud Keychain in Safari) can offer to save the passphrase and fill it in next time. That is your choice, and it trades some protection for convenience: anyone who can use your unlocked browser can then fill it in. The recovery key is never offered to the password manager.
 - **Search** finds encrypted notes only while the app is unlocked. While locked it searches your unencrypted notes and says so; unlocking runs the search again.

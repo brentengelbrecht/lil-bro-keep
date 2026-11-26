@@ -65,7 +65,8 @@ async function ensureScaffold(){
   }
   if(!(await has(ROOT,'index.html')))await writeFile(ROOT,[],'index.html',indexHTML());
 }
-/* opts.unlock: a folder has just been chosen or reconnected, so if it has a vault the passphrase is asked for now (after a plain start the app stays locked until asked). */
+/* opts.unlock: the app is starting or a folder has just been chosen or reconnected, so if the folder has a vault the passphrase is asked for now. Cancelling, or giving up
+   after a wrong one, leaves the app locked with the folder loaded. */
 async function loadFolder(opts){
   let data=null;
   try{data=await readIndex()}catch(e){quiet('no readable index: the folder is scanned instead',e)}
@@ -78,8 +79,8 @@ async function loadFolder(opts){
   await loadVault();
   Host.crypt();
   runReconcile();
-  Host.ready();
-  if(opts&&opts.unlock&&VAULT&&!LBE.isUnlocked())setTimeout(()=>Host.unlock(),0);
+  if(opts&&opts.unlock&&VAULT&&!LBE.isUnlocked())setTimeout(async()=>{await Host.unlock({once:true});Host.ready()},0);      // unlocking comes first: an unsaved draft of an encrypted note needs the key
+  else Host.ready();
 }
 
 function folderSave(){
@@ -266,7 +267,7 @@ async function bootFolderImpl(){
     notes=cache.notes.map(normNote);LB=(cache.labels||[]).slice();
     fstate='cached';gesturePending=p!=='granted';Host.render();
   }
-  if(p==='granted')await loadFolder();
+  if(p==='granted')await loadFolder({unlock:true});
   else if(!haveCache){fstate='perm';Host.render()}
 }
 async function reconnectFolder(){

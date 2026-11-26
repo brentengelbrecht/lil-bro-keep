@@ -370,7 +370,7 @@ Host.flushed=()=>Drafts.check();
 Host.ready=()=>Drafts.recover();
 Host.crypt=()=>{Crypt.changed();if(q)searchStart();render()};     // unlocking (or locking) while a search is showing runs it again, over the notes that can now be read
 Crypt.changed();                                                  // the lock button is drawn (or hidden) from the start, whatever the storage mode
-Host.unlock=()=>Crypt.promptUnlock();                  // ask for the passphrase; resolves true once the app is unlocked
+Host.unlock=opts=>Crypt.promptUnlock(opts);             // ask for the passphrase; resolves true once the app is unlocked (opts.once: a single attempt)
 Host.needUnlock=()=>{Host.unlock().then(ok=>{if(ok)Store.flush()})};
 Host.editing=()=>!!open||!!document.querySelector('.ov .editor');
 if(wantFolder)Store.boot();else render();

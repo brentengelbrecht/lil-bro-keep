@@ -25,7 +25,7 @@ with session(folder=True) as s:
         ev(f"Store.setupEncryption('{PASS}')"); s.settle()
         ev("""async()=>{const x=blank();x.title='Secret';x.body='hidden';x.enc=true;x.color=4;notes.push(x);save();await __A.flush()}"""); s.settle()
         ev("async()=>{await kvSet('dir',await navigator.storage.getDirectory());localStorage.setItem('keep-mode','folder')}")
-        pg.reload(); s.settle()   # real start-up path, locked
+        pg.reload(); pg.wait_for_selector('.dlg[aria-label="Unlock encrypted notes"]',timeout=20000); pg.keyboard.press('Escape'); s.settle()   # real start-up path: the unlock prompt is dismissed, so the app starts locked
         def snap(name): print('  ..',tag,name,flush=True); res[name]=ev(DUMP)
         snap('home locked')
         pg.hover('.vg>.card >> nth=0'); s.settle(); snap('card hover')
