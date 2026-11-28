@@ -1,4 +1,4 @@
-/* gallery.js: Google Keep-style image gallery (see google-keep-image-layout-spec.md). Icons and the escaping helper h() come from util.js.
+/* gallery.js: Google Keep-style image gallery (layout rules: AGENTS.md 4.3). Icons and the escaping helper h() come from util.js.
    - groupRows():   ordered images -> rows (first row = N mod 3 when not zero, then rows of 3)
    - galleryHTML(): the same markup for the card (first two rows) and the editor (all rows)
    - galleryWire(): fills in missing image sizes and shows a placeholder for images that fail to load

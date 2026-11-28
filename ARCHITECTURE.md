@@ -1,7 +1,7 @@
 # Lil Bro Keep: how the code is organised
 
 Plain `<script>` files, not ES modules (modules are blocked when a page is opened from disk). They are loaded in the order below, which is the order in `index.html`. **A file may only use things defined in files above it.**
-The one deliberate way back up is `Host` (in `model.js`): hooks (`render`, `collapsed`, `editing`, `status`, `crypt`, `needUnlock`, `editingNote`) that `app.js` and `folder-ui.js` fill in at start-up.
+The one deliberate way back up is `Host` (in `model.js`): hooks (`render`, `collapsed`, `editing`, `status`, `editingNote`, `crypt`, `unlock`, `needUnlock`, `flushed`, `ready`) that `app.js` fills in at start-up. Each has a harmless default in `model.js`, so a lower layer can call it before the page exists.
 
 ## Files
 
@@ -28,16 +28,16 @@ Scripts, in load order:
 | `model.js` | what a note is (`blank`, `sigOf`), shared state (`notes`, `LB`, `KEEP_MOD`), colour names, the `Host` hooks |
 | `format.js` | the notes folder's file format as pure functions: `noteHTML`, `parseNoteFile`, `indexHTML`, the generated stylesheet. No folder access, no page |
 | `media.js` | attachment data: IndexedDB blobs, object URLs, image sizes (`measureImage`), `hydrate()`. The folder engine registers how to read and remove files through `Media` |
+| `encrypt.js` | **all** encryption and decryption (Web Crypto, no dependencies): the vault, note bodies, chunked attachments, passphrase strength, and the sealed deferred-action log (a line can be written while locked, to a public key held in the vault). Knows nothing about notes or the page. A classic script (works from `file://`), tested alone in node. The idle lock is not here: it is in `crypt-ui.js` |
 | `folder-io.js` | the folder store's file layer: the remembered folder handle, reading and writing files, where a note's page lives (`bucketDir`, `readPage`, `writePage`, `eachPage`), the media files in the folder, the saved copy for instant start |
 | `folder-crypt.js` | encryption in the folder store: the vault (`vault.json`), unlock and lock, reading and writing encrypted pages, making a note's attachments plain again, the deferred-action log (`actions.log`) |
 | `folder-lazy.js` | notes known by their details only (stubs) and the background search through unread pages |
 | `folder-labels.js` | renaming or deleting a label in notes already stored |
-| `folder.js` | the folder store's engine: ids, saving and flushing, conflicts, the index, scan and reconcile, start-up, reconnect, disconnect. Uses the four files above, loaded before it |
+| `folder.js` | the folder store's engine: ids, saving and flushing, conflicts, the index, scan and reconcile, start-up, reconnect, disconnect, choosing a folder (`attachFolder`). Uses the four files above, which load before it and share its state (`ROOT`, `MODE`, `notes`, `lastW`…): they touch that state only when called, never while loading |
 | `store.js` | **the persistence interface** (`Store`), the browser backend (localStorage), `addMedia`, and `commit()` |
-| `encrypt.js` | **all** encryption and decryption (Web Crypto, no dependencies): the vault, note bodies, chunked attachments, passphrase strength, idle lock. Loads before `folder.js`; knows nothing about notes or the page. A classic script (works from `file://`), tested alone in node |
 | `folder-ui.js` | what people see about the folder: status line, reconnect prompt, choose-folder and Settings dialogs |
 | `drafts.js` | editor drafts (see AGENTS.md): a plain-text copy of the open note in localStorage until it is saved, a Web Lock per session to tell a crash from an open tab, and the continue/discard prompt at start. Uses `Store` and the editor's `api.sync` |
-| `crypt-ui.js` | the encryption dialogs (set up with strength meter and recovery key, unlock, change passphrase), the sidebar lock button and the idle lock. Reaches the engine only through `Store` |
+| `crypt-ui.js` | the encryption dialogs (set up with strength meter and recovery key, unlock, change passphrase, set a new passphrase with the recovery key), the sidebar lock button and the idle lock. Reaches the engine only through `Store` |
 | `capture.js` | getting attachments into a note: name clashes (`uniqueName`), the replace-or-keep-both question (`askReplace`), the camera (`takePhoto`) |
 | `gallery.js` | image rows (`groupRows`, `galleryHTML`, `galleryWire`), what is specific to dragging images and moving them with the keyboard (`galleryEditor`), and the full-window image viewer |
 | `vgrid.js` | the virtual masonry grid: only cards near the viewport exist; what is specific to dragging cards (slot, placeholder); keyboard movement between cards |
@@ -54,19 +54,21 @@ Every script starts with `'use strict';`. Top-level functions and `let`/`const` 
 
 ## The persistence interface
 
-Everything outside `store.js`, `folder.js` and `folder-ui.js` talks to storage through `Store`:
+Everything outside `store.js` and the `folder*.js` files talks to storage through `Store`:
 
 - **State:** `Store.mode` (`'browser'` or `'folder'`), `Store.state` (`'ok'`, `'loading'`, `'perm'` needs reconnecting, `'cached'` showing a saved copy), `Store.loaded`, `Store.gesturePending`, `Store.folderName`, `Store.canUseFolder`.
 - **Notes and media:** `Store.save()`, `Store.addMedia()`, `Store.flush()`, `Store.relabel(old, new)` (bring stored notes in line after a label rename or delete).
-- **Folder lifecycle:** `Store.boot()`, `Store.reconnect()`, `Store.disconnect()`, and, used by the folder dialogs, `Store.inspect()`, `Store.attach()`, `Store.rescan()`, `Store.rewriteStyles()`.
+- **Folder lifecycle:** `Store.boot()`, `Store.reconnect()`, `Store.disconnect()`, and, used by the folder dialogs, `Store.inspect()`, `Store.attach()`, `Store.rescan()`, `Store.rewriteStyles()`, `Store.copyable()` (the notes that can be copied into another folder).
+- **Lazy loading and search:** notes known only by their details (`n.stub`) are read with `Store.load(n)` / `Store.loadAll(list)`; `Store.search()` looks through unread pages; `Store.peek(n)` reads a locked note's ciphertext for its card; `Store.isSaved(n)` says whether a note is what the folder holds.
+- **Encryption (folder only):** `Store.crypto` (`available`, `hasVault`, `unlocked`), `Store.setupEncryption()`, `Store.prepareEncryption()` and `Store.discardPendingEncryption()` (asked while a folder is being chosen), `Store.vaultIn(folder)`, `Store.unlock()`, `Store.unlockWithRecoveryKey()`, `Store.lock()`, `Store.changePassphrase()`, `Store.resetPassphrase()`.
 
 While the folder is not connected (`Store.state` is not `'ok'`), nothing is written to browser storage, so a saved copy can never replace the real browser copy.
 
 ## Rules of thumb
 
 - **Changing notes:** change the note objects, then call `commit()` (saves, then redraws). `commit({keepMod:[ids]})` when the change is not an edit (reordering, an image-size backfill), `commit({render:false})` while a note is open in the editor, `commit({delay:ms})` to save once after a quiet moment.
-- **Talking to storage:** only through `Store`. Nothing outside `store.js`, `folder.js` and `folder-ui.js` should touch `ROOT`, `MODE`, `fstate` or folder files, and nothing outside `store.js` and `folder.js` should read or write `localStorage` notes.
-- **Adding another backend** (for example a native folder on a phone): implement what `folder.js` offers behind `Store` (load, save changed notes, media read/write/remove, rescan) and keep `format.js` unchanged, so every app can share one folder.
+- **Talking to storage:** only through `Store`. Nothing outside `store.js` and the `folder*.js` files should touch `ROOT`, `MODE`, `fstate` or folder files, and nothing outside `store.js` and `folder*.js` should read or write `localStorage` notes. The one deliberate exception is `drafts.js`, whose editor draft (`keep-draft`) is kept in `localStorage`, unencrypted, on purpose (see AGENTS.md).
+- **Adding another backend** (for example a native folder on a phone): implement what the `folder*.js` files offer behind `Store` (load, save changed notes, media read/write/remove, rescan) and keep `format.js` unchanged, so every app can share one folder.
 - **Dialogs:** open every dialog with `openDialog()` (`dialog.js`), never by hand, so Escape, Tab, focus return and the inert page behind work the same everywhere. Something that must take Escape before a dialog does (a drag in progress) listens on `window`.
 - **Drags:** every drag-to-reorder uses `dragGesture()` (`drag.js`). The caller supplies what is specific to it.
 - **Keyboard in the grid:** the grid is one Tab stop (`vgrid.js`): arrow keys move between cards, Enter or Space opens, Alt+arrows reorder. A new button inside a card needs no extra work: its tab order is managed with the card.
@@ -75,7 +77,6 @@ While the folder is not connected (`Store.state` is not `'ok'`), nothing is writ
 - **Order of notes:** use `byOrder` / `pos` in `order.js`. Do not sort notes by `ts` directly in the view. (`folder.js` sorts by `ts` once, deliberately, when it renumbers notes copied into a new folder.)
 - **Colours:** a note stores a colour as an index (0 to 11). The palette must be kept in step in three places: `--k0` to `--k11` in `styles.css`, the light colours in `format.js` (the generated folder stylesheet) and the names in `model.js`.
 - **Pure files:** `order.js` and `format.js` use no DOM and no page state, so they can be tested alone.
-- **Strict mode** is not enabled yet.
 
 ## Releasing
 
@@ -85,7 +86,7 @@ Every script and stylesheet tag in `index.html` carries `?v=<number>`. Bump all 
 
 Python Playwright scripts (headless Chromium) in `tests/`, plus one Node test.
 
-- `python3 tests/run_all.py` runs the suites listed in `tests/run_all.py`: the Node test `tests/t36_order_logic.js` first, then each Python test `tests/t<N>*.py` in numeric order. A new test file has to be added to the `suites` list and the `names` map in that file. It starts its own web server (port 8765). Needs Python with Playwright and Chromium, and Node for the order test. A timeout counts as a failure.
+- `python3 tests/run_all.py` runs the suites listed in `tests/run_all.py`: the Node tests `tests/t36_order_logic.js` and `tests/t41_encrypt_unit.js` first, then each Python test `tests/t<N>*.py` in numeric order. A new test file has to be added to the `suites` list and the `names` map in that file. It starts its own web server (port 8765). Needs Python with Playwright and Chromium, and Node for the order test. A timeout counts as a failure.
 - The folder tests use the browser's private file system in place of a real folder.
-- `tests/coverage.py` runs the browser tests with code coverage on and lists what they never execute. Its file list comes from the script tags in `index.html`. Run it in batches (`python3 tests/coverage.py t7 t10`), then `python3 tests/coverage.py --report`. Last measured: 94.9% of code bytes (comments excluded), with 24 suites.
+- `tests/coverage.py` runs the browser tests with code coverage on and lists what they never execute. Its file list comes from the script tags in `index.html`. Run it in batches (`python3 tests/coverage.py t7 t10`), then `python3 tests/coverage.py --report`. Last measured: 94.9% of code bytes (comments excluded), with 24 suites, before the encryption work (not measured since).
 - What the tests cannot cover (real folder picker and sync service, a real Takeout export, camera, microphone, touch, screen reader) is listed in `AGENTS.md`.

@@ -20,18 +20,19 @@ It is plain HTML, CSS and JavaScript: no build step, no frameworks, no server, n
 - [The sidebar](#the-sidebar)
 - [The main area](#the-main-area)
 - [The note editor](#the-note-editor)
+- [Encryption](#encryption)
 - [Everything else](#everything-else)
 - [Limits and things to know](#limits-and-things-to-know)
-- [Licence](#licence)
+- [Licence](LICENSE)
 
 ---
 
 ## Getting started
 
-1. Download or clone this repository. Alternatively, run it [https://brentengelbrecht.github.io/lil-bro-keep](https://brentengelbrecht.github.io/lil-bro-keep/).
+1. Download or clone this repository. Alternatively, run it from https://lilbrokeep.github.io.
 2. Open `index.html` in **desktop Chrome**. You can double-click it (no web server needed).
 3. Start writing notes. Out of the box, they are saved in the browser.
-4. To keep your notes in a folder you can sync and back up, open **Settings** in the sidebar and choose a notes folder (see [Notes folder storage](#notes-folder-storage)).
+4. To keep your notes in a folder you can sync and back up, open **Settings** in the sidebar and choose a notes folder (see [Storage modes](#storage-modes)). A folder without encryption is first set up with a passphrase (see [Encryption](#encryption)).
 
 **Browser support.** Choosing a notes folder needs a browser feature that only desktop Chrome offers in practice. Safari, Firefox and phone browsers can still use the app in browser-storage mode, but not folder mode.
 
@@ -99,7 +100,8 @@ From left to right:
 | **Trash** | Deleted notes. Each can be **Restored** or **Deleted forever**, and the whole Trash can be emptied. Notes in Trash can't be edited, and you can't reorder them. |
 | **Import** | Import from Google Takeout (see [Importing from Google Takeout](#importing-from-google-takeout)). |
 | **Export** | Save the notes you're looking at as one HTML page. |
-| **Settings** | Storage mode and notes folder. |
+| **Lock** / **Unlock** | Appears once encryption is set up: locks the encrypted notes, or asks for the passphrase (see [Encryption](#encryption)). |
+| **Settings** | Storage mode and notes folder, and encryption (set up, lock, change passphrase). |
 
 ### Working with labels
 
@@ -238,8 +240,9 @@ Encryption protects the text, checklist, labels, links and attachments of your n
 
 **Notes folder** keeps everything as files in a folder you choose. Choose **Settings → Choose notes folder…** and pick a sub-folder of your synced folder, for example `Dropbox/Keep-Notes`. (Chrome won't allow top-level Documents, Desktop or Downloads.)
 
+- A folder without encryption is first given it: the set-up dialog (passphrase and recovery key) comes before anything else, and cancelling stops the whole change (see [Encryption](#encryption)). A folder that has encryption asks for its passphrase once it is loaded.
 - If the folder already holds notes, the app **loads them**. Notes currently in the app are not merged in.
-- If the folder is empty, you can **copy** your current notes into it or **start empty**. Your browser copy is left untouched as a backup.
+- If the folder is empty, you can **copy** your current notes into it (notes from this browser are encrypted on the way in) or **start empty**. Your browser copy is left untouched as a backup until you disconnect. When you switch from one folder to another, encrypted or not-yet-read notes stay in the old folder and are not copied.
 - Other Settings actions: **Rescan folder**, **Rewrite stylesheet** and **Disconnect**.
 
 ### What's in the folder
@@ -248,21 +251,23 @@ Encryption protects the text, checklist, labels, links and attachments of your n
 Keep-Notes/
   index.html        a readable list of your notes (also used by the app for fast start-up)
   styles.css        the one shared stylesheet for every note page
+  vault.json        (with encryption) the keys, wrapped by your passphrase and your recovery key
+  actions.log       (with encryption) label changes waiting to reach encrypted notes
   0/                1.html … 99.html
   200/              20000.html … 20099.html
   media/
     images/200/     20050-1.jpg
     video/200/      20050-2.mp4
-    audio/200/      20050-3.webm
+    audio/200/      20050-3.webm      (attachments of encrypted notes are .enc files)
 ```
 
-- Each note's details (dates, colour, pinned state, labels, and the original names of attachments) are stored in a hidden comment at the top of its page. Dates carry a time-zone offset, for example `2024-10-18T11:55:31.000+01:00`.
+- Each note's details (dates, colour, pinned state, labels, and the original names of attachments) are stored in a hidden comment at the top of its page. (For an encrypted note only the dates, colour, pinned state and the names of its encrypted files are there; the rest is inside the encrypted text.) Dates carry a time-zone offset, for example `2024-10-18T11:55:31.000+01:00`.
 - `index.html` is only a speed-up: it holds a link and the details of each note (colour, labels, dates…) but none of the note text, which is read from each note's page as it is needed. Every note page stands on its own, and **Rescan folder** rebuilds the index from them.
 - **Stop using the folder** (Settings) clears everything this browser holds and starts again with the two welcome notes; the files in the folder stay where they are.
 - Because the format is plain HTML, other tools, or a future phone app, can read the same folder.
 
 ### Fast start and reconnecting
-- The app keeps a **saved copy** of your notes in the browser so the first notes appear instantly at launch.
+- The app keeps a **saved copy** of your notes in the browser so the first notes appear instantly at launch (encrypted notes are never in it).
 - Chrome normally asks you to **re-grant access** to the folder each session. If it does, you'll see a banner ("Click anywhere to reconnect"); your first click asks Chrome for permission. Choose **"Allow on every visit"** when it appears to avoid being asked again. If you deny access, you can switch to browser storage instead.
 - While the folder isn't connected, nothing is written to the browser copy, so it can't be overwritten by mistake.
 - A quiet **background check** compares the folder with what the app knows and picks up notes added, edited or deleted outside the app. Changes wait until you close any note you have open, and **never overwrite** edits you haven't saved.
@@ -296,7 +301,7 @@ All dialogs (Import, Export, Settings, "replace file?", camera, picture viewer) 
 ## Limits and things to know
 
 - **Desktop Chrome** is the target. Folder mode doesn't work in Safari, Firefox or phone browsers.
-- **Browser find (Ctrl+F)** only finds notes currently drawn on the screen. Use the search bar, which searches all notes.
+- **Browser find (Ctrl+F)** only finds notes currently drawn on the screen. Use the search bar, which searches all notes (encrypted ones only while unlocked).
 - **Cloud-sync "online-only" files** (placeholders that download on demand) can be slow or unreadable. Mark your notes folder as "available offline".
 - **Pictures and video** appear in the app only once the folder is connected; the saved copy holds text only.
 - **Old phone voice memos** from Keep (`.3gp`, `.amr`) import but may not play in Chrome. **HEIC photos** may not display outside Safari.

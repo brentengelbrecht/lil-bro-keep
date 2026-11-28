@@ -289,7 +289,7 @@ body.busy #spin{display:block}
 @media (max-width:900px){.st{display:none}}
 .rt a,.rt a:visited,.rt a:hover,.rt a:active,.tx a,.tx a:visited,.tx a:hover,.tx a:active{color:#0b57d0;background:#fff;text-decoration:underline;cursor:pointer}
 
-/* ---------- Image gallery (google-keep-image-layout-spec.md) ---------- */
+/* ---------- Image gallery (layout rules: AGENTS.md 4.3) ---------- */
 /* Rows of 1-3 images. Every image in a row gets flex-grow proportional to its aspect ratio (x1000, because grow factors that
    add up to less than 1 would leave part of the row empty) and flex-basis 0, so all share one height and
    the row fills the width exactly. Images are never cropped, and the gallery itself never scrolls or has a height limit. */

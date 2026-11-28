@@ -2,7 +2,7 @@
 
 For an AI agent that must understand, extend, or rebuild this app. It records what the source code cannot tell you: why things are the way they are, what was decided, what was tried and dropped, and the traps found on the way. Read `ARCHITECTURE.md` (the file map and rules) alongside it. The source is the truth for *how*; this file is the truth for *why*.
 
-**Inherited vs decided.** The app began as four files supplied by the user (`index.html`, `styles.css`, `storage.js`, `app.js`, plus icons) and a hand-written spec, `google-keep-image-layout-spec.md`. Features that existed at the start (composer, 12 note colours, pinning, trash, labels, search, grid/list, checklists, rich text, image/video/audio attachments, voice recording, camera, Google Takeout import, HTML export, browser and folder storage with conflict handling, saved copy, toasts, the equalizer spinner) were not discussed in the work described here, so their *reasons* are unknown; where this file says "inherited" it means exactly that. Everything marked **Decided** was an explicit choice, usually the user's, in the work that followed.
+**Inherited vs decided.** The app began as four files supplied by the user (`index.html`, `styles.css`, `storage.js`, `app.js`, plus icons) and a hand-written image-layout spec (no longer kept in the project: section 4.3 and the tests are the record). Features that existed at the start (composer, 12 note colours, pinning, trash, labels, search, grid/list, checklists, rich text, image/video/audio attachments, voice recording, camera, Google Takeout import, HTML export, browser and folder storage with conflict handling, saved copy, toasts, the equalizer spinner) were not discussed in the work described here, so their *reasons* are unknown; where this file says "inherited" it means exactly that. Everything marked **Decided** was an explicit choice, usually the user's, in the work that followed.
 
 The document is organised by screen area: Foundations, Header, Sidebar, Main area, Editor, then Open items.
 
@@ -24,20 +24,20 @@ The document is organised by screen area: Foundations, Header, Sidebar, Main are
 
 ### 1.3 Architecture outcome and its reasons
 Plain `<script>` files loaded in a fixed order (`index.html`); a file may only use things defined in files above it. Rules are in `ARCHITECTURE.md`; the reasons:
-- **Layering + `Host` hooks.** The original `storage.js` called into `app.js` and vice versa (a circular dependency held together by global scope). Lower layers now reach the page only through four hooks in `Host` (`render`, `collapsed`, `editing`, `status`) that the page fills in at start-up.
+- **Layering + `Host` hooks.** The original `storage.js` called into `app.js` and vice versa (a circular dependency held together by global scope). Lower layers now reach the page only through the `Host` hooks (`render`, `collapsed`, `editing`, `status`, `editingNote`, `crypt`, `unlock`, `needUnlock`, `flushed`, `ready`) that the page fills in at start-up.
 - **`Store` facade** (`store.js`) is the only thing the UI talks to for persistence. Reason: it is the seam for a future native-folder backend.
 - **`commit()`** (in `store.js`) is the one way to "save and redraw", with options `keepMod` (a reorder or size backfill must not change the modified date), `render:false`, `delay`. Reason: the same save+render pair was hand-written in 12 places and each new feature had to remember the details.
 - **`openDialog()`** (`dialog.js`): every dialog is opened through it. **`dragGesture()`** (`drag.js`): every drag-to-reorder uses it. Both exist because the same logic had been written several times by hand and diverged.
 - **Classic scripts, not ES modules** (Decided): modules are blocked when a page is opened from disk, and the user may do that.
 - **Cache busting:** every script/stylesheet tag in `index.html` carries `?v=<number>`; bump all of them together on each release.
-- **Strict mode** is not yet enabled; a scratch run passed the whole suite, so it is a safe step (see Open items).
+- **Strict mode** is on in every script (`tests/t1.py` fails if one is not strict; a new script needs one function added to its list there).
 - One icon table (`P` in `util.js`, drawn with `ic(name,size)`). Anything that can come from a stored note or file (titles, labels, ids, attachment names and kinds, link addresses) goes through `h()` before it enters HTML, including inside attributes; a test with hostile values guards this.
 
 ### 1.4 Direct build path (the order that avoids the detours)
 1. Note model, sanitiser (`richtext.js`), order logic (`order.js`), folder file format (`format.js`, pure functions).
 2. Stores: browser store, media blobs, folder engine, then the `Store` facade and `commit()`. Build the `Host` hook idea in from the start.
 3. Page shell: header, sidebar, grid rendering.
-4. Build the **virtual masonry grid** directly (do not start with CSS multi-column; see 4.4) and the gallery rows from the spec.
+4. Build the **virtual masonry grid** directly (do not start with CSS multi-column; see 4.4) and the gallery rows from section 4.3.
 5. Shared `openDialog()` and `dragGesture()` *before* writing any dialog or drag feature.
 6. Editor, assembled from separate pieces (rich text, recorder, attachments), not as one closure.
 7. Progress ring/spinner.
@@ -51,7 +51,7 @@ Plain `<script>` files loaded in a fixed order (`index.html`); a file may only u
 - Camera and microphone are stand-ins (canvas `captureStream`, fake `MediaRecorder`); touch is simulated with CDP touch events; coverage taken before each click/reload (page-initiated reloads otherwise discard it).
 - A test that stops mid-way with "Target closed" usually means the browser crashed (see the handle note), not a logic failure.
 - **`tests/harness.py` is the shared test code** (do not copy its parts into a test): `ok()` and `finish()` (one failure counter and exit code), and `session(folder=True)`, a browser plus page with the folder helpers (`boot`, `rd`, `rdb`, `wr`, `ls`, `rm`, `wipe`, `new_tab`). **Wait for a condition, not a time**: `s.settle()` waits until nothing is in flight (no pending save, scan, lazy read, spinner or "working" dialog button) and stays that way a short moment, `s.until(js)` waits for an expression, `s.pause(ms)` is only for things that are about time (a debounce). The older tests still use fixed `wait_for_timeout` sleeps and carry their own setup; move one onto the harness when it is next touched. `tests/css_compare.py OLD.css` compares computed styles of about twenty states with an old stylesheet: use it to prove that a CSS refactor changed nothing.
-- The suites (24): order logic, image-layout geometry (section 11.1 numbers, drops, viewer sizes, strict mode on every script), colour picker, viewer zoom, virtual grid, card/pin/colour layout, ordering and drag, progress ring, folder mode, folder dialogs, escaping and scale, image drag, touch drag, drag auto-scroll, open-at-top, editor, import/export, folder start-up, labels/replace/camera, robustness, keyboard grid, dialogs, two copies on one folder (`t37`: two pages sharing one folder, the lock, conflicts), error and edge paths (`t38`: failed saves, stopping use of the folder, copy into a new folder, drops on the editor, viewer pan, card pop-up and camera). Last measured coverage: 94.9% of code, all files including `dialog.js`.
+- The suites (33 browser suites and 2 Node tests, `tests/run_all.py`): order logic and `encrypt.js` unit tests (Node); image-layout geometry (also: strict mode on every script), colour picker, viewer zoom, virtual grid (400 notes), image flush + pin + colour fill, note ordering and drag, progress ring, folder mode, folder dialogs, escaping and scale, image drag (mouse), drag on touch, drag auto-scroll, note opens at top, note editor, import and export, folder start-up, labels / replace dialog / camera, robustness, keyboard in the grid, dialogs, two copies on one folder, error and edge paths, lazy loading and index, encryption, locked app, editor drafts, encryption dialogs, import / drafts / large files with encryption, lock button and recovery, folder: encryption first, deferred label actions, unlock at start. **`drag auto-scroll` fails one check ("cards stay bounded while auto-scrolling") in the current headless test environment, with or without any of this work; it is not understood yet (see Open items).**
 
 ### 1.6 Lessons that cost time (so you do not repeat them)
 - A `flex-grow` that sums to less than 1 only fills that fraction of the row. See 4.3.
@@ -79,7 +79,7 @@ Layout, left to right: progress slot, menu button, logo and name, search, spacer
 Desktop: toggles a collapsed icon-only sidebar (`body.min`, 72 px). Width ≤ 700 px: toggles a slide-over drawer (`body.open`).
 
 ### 2.3 Search
-Case-insensitive substring over title, body, checklist items, label names and link addresses. Re-renders on every keystroke. While a search is active, **drag-reordering is disabled** (results are a filtered slice).
+Case-insensitive substring over title, body, checklist items, label names and link addresses. Notes not read yet are searched by reading their pages in the background; encrypted notes are searched only while the app is unlocked (while locked a message above the results says so, and unlocking restarts the search). Re-renders on every keystroke. While a search is active, **drag-reordering is disabled** (results are a filtered slice).
 
 ### 2.4 Status line
 Shows folder-mode status ("Saving 3 of 12…") and errors (red). Empty in browser mode.
@@ -111,7 +111,7 @@ One HTML page of the notes **in the current view**: pinned first, then the rest 
 ### 3.5 Settings, storage modes and the folder format
 - **Browser mode**: notes and labels in `localStorage`; attachment data in IndexedDB.
 - **Folder mode** (desktop Chromium only): `styles.css`, `index.html` (a readable list of links with a JSON block of each note's *details*, no note text), one page per note at `<id/100>/<id>.html` with its metadata as JSON in an HTML comment, and media under `media/{images,video,audio}/<id/100>/<id>-<n>.<ext>`. The format is inherited; **it must not change incompatibly** (see 1.1). The additions made in this work are optional keys, so older files still load: `pos` (manual order) on a note and `w`/`h` (pixel size) on image attachments.
-- Choosing a folder: if it already holds notes the app offers to **load them** (the notes currently in the app are *not* merged); if empty it offers to **copy** the current notes in or start empty. Also: Rescan, Rewrite stylesheet, Disconnect.
+- Choosing a folder: if it already holds notes the app offers to **load them** (the notes currently in the app are *not* merged); if empty it offers to **copy** the current notes in or start empty. **That is the flow after the encryption step and with the encryption rules**: a folder without a vault (or with a vault but no notes) is first given encryption, only the notes that can be copied are offered, and a folder with a vault asks for the passphrase once it is loaded. See "Choosing a notes folder sets up encryption first", "A folder with an old vault but no notes starts over" and "The passphrase is asked whenever a folder with a vault is opened" below. Disconnecting clears everything this browser holds.. Also: Rescan, Rewrite stylesheet, Disconnect.
 - Start-up when a folder is remembered: access granted -> load; needs a click -> show the **saved copy** with a banner ("Click anywhere to reconnect"); no saved copy -> a full-page Reconnect prompt; no remembered folder -> fall back to browser mode. While the folder is not connected nothing is written to browser storage (fixed: a save in that state used to overwrite the browser copy).
 - **Lazy loading (decided):** the index gives every note's details (`id`, link title, colour, pin, trash, labels, attachments, links, dates, order key, file size/date) but no text. A note held only by those is a **stub** (`n.stub`, with `n.idxTitle`). Its page is read when a card for it is drawn, when it is opened, before it is rewritten, before an export, and when a search needs it (`loadNote`, `loadMany`, `searchFiles` in `folder.js`). Reading is never an edit: `lastW` is brought in step so nothing is rewritten. A page that cannot be read is never overwritten. An index written by the earlier version (whole notes) still loads.
 - **Search** matches loaded notes and the labels/links of stubs at once, then looks through the pages of the rest in the background (cancelled by the next keystroke); matches are loaded as they are found.
@@ -158,7 +158,7 @@ Decisions, all explicit:
 - Clicking anywhere on a card, images included, opens the note; the card shows **no "+N" counter** for hidden images.
 - A card is announced to screen readers as "Note: title" / "Pinned note: title".
 
-### 4.3 Image layout (from the spec; the spec file is the source of truth except for the viewer, see 5.4)
+### 4.3 Image layout (originally from a hand-written spec; this section and the image-layout geometry suite are now the source of truth, except for the viewer, see 5.4)
 - Justified rows, equal height per row, row fills the width, never cropped; **max 3 per row; if N mod 3 is not 0 the *first* row is the short one** ("remainder first"), then rows of 3. The grid shows the first **two** rows of the full grouping (never regrouping the visible images); the editor shows all.
 - Implemented with flexbox: tile `aspect-ratio` = width/height, `flex-basis:0`, and flex-grow proportional to the aspect ratio. **Trap**: grow factors summing to less than 1 (a lone portrait) leave the row short, so the grow is **ratio x 1000**.
 - Size comes from the stored `w`/`h`, **measured when the image is attached** (so the space is reserved before the image loads). Images without a size use 1:1 until they load, then the size is stored (without changing the note's modified date). A failed load shows a neutral "Image unavailable" tile.
@@ -209,9 +209,9 @@ Used as a dialog (opening an existing note) and inline (composer).
 
 ### 5.4 Image gallery and viewer
 - Tile toolbar: move earlier, move later, delete. **Drag to reorder** (hold ~300 ms or move ~4 px, also with a mouse), floating 80 px preview, drop line, auto-scroll; keyboard Alt+arrows on a focused tile; the moved images take over the *image slots* of the attachment list (videos and audio keep theirs).
-- **Viewer** (clicking an image in the editor; not on cards): **Decided** (changed from the spec): opens at **100% = the whole image fitted to the window** (smaller images are scaled up), zoom **40%-200%** in steps of 1.25, arrows (and arrow keys) go to the previous/next image **at 100% again**, no wrap-around, close button top-left, Escape closes the viewer only, drag pans, Ctrl+wheel zooms. The spec's "shorter axis" sizing and 4x zoom are **superseded** and the spec document is out of date on this.
+- **Viewer** (clicking an image in the editor; not on cards): **Decided** (changed from the original layout spec): opens at **100% = the whole image fitted to the window** (smaller images are scaled up), zoom **40%-200%** in steps of 1.25, arrows (and arrow keys) go to the previous/next image **at 100% again**, no wrap-around, close button top-left, Escape closes the viewer only, drag pans, Ctrl+wheel zooms. The spec's "shorter axis" sizing and 4x zoom are **superseded** and the spec document is out of date on this.
 - **Sliding between images (Decided):** the picture on screen is copied into a layer that slides out while the new one slides in, using a CSS transition on `transform` (`.ivsl`, 0.3 s). The new image is positioned off screen, on the side it arrives from, *before* its file is assigned, so it loads out of sight and is never painted in the middle first (before, one frame showed it at the centre before it jumped away). On the way the two pictures share the screen in every proportion from 100/0 to 0/100; at the end the new one is the one on screen. A literal 10% at a time would be `steps(10)` on `.ivsl`, which looks jerky, so it is not used. Reduced motion: instant.
-- **Rotation in the viewer (Decided):** two buttons (left and right, in the zoom bar) and the keys **R** (right) and **Shift+R** (left) turn the picture by 90 degrees. It is for looking only: a CSS rotation on `.ivimg` inside `.ivbox` (the box has the size of the picture as seen, so zoom, pan and scrolling work on the rotated picture). It never touches the image in the editor, the stored data or the file on disk. Each image keeps its own turn while the viewer is open (`rots` map in `openViewer`); closing the viewer forgets it. The degrees are a running total so a turn always animates the short way round; with reduced motion it is instant.
+- **Rotation in the viewer (Decided):** two buttons (left and right, in the zoom bar) and the keys **R** (right) and **Shift+R** (left) turn the picture by 90 degrees. It is for looking only: a CSS rotation on `.ivimg` inside `.ivbox` (the box has the size of the picture as seen, so zoom, pan and scrolling work on the rotated picture). It never touches the image in the editor, the stored data or the file on disk. Each image keeps its own turn while the viewer is open (`rots` map in `galleryViewer`); closing the viewer forgets it. The degrees are a running total so a turn always animates the short way round; with reduced motion it is instant.
 - Image list in the editor is the same ordered list as the card; the viewer covers all images, including those hidden on the card.
 
 ### 5.5 Colour, labels, pin, closing
@@ -224,14 +224,12 @@ Used as a dialog (opening an existing note) and inline (composer).
 ## 6. Open items and known gaps
 
 **Tests**
+0. **`drag auto-scroll` fails one check in the current headless environment** ("cards stay bounded while auto-scrolling"), also on the original code; unexplained, so not fixed. **Coverage has not been re-measured since the encryption work** (the 94.9% below is from 24 suites). **The 22 older test files still use fixed `wait_for_timeout` sleeps and their own setup** (about 340 sleeps); the newer ones use `tests/harness.py`.
 1. About 5% of code never ran. The largest blocks: the lock-protected number claim for a note saved after its media (`claimId`), attachments in a conflict copy (`keepBoth`), `appendLinks` edge cases, `recorder.js` (84%) and the Takeout import's rarer branches (88%). (`disconnectFolder` shows as never run only because the page reloads and drops coverage; `t38` does exercise it.)
-2. Needs a human: the real folder picker in desktop Chrome (and a real sync service), a **real Takeout export**, a real camera/microphone, a real touch device, a screen reader (VoiceOver/NVDA), and remembering the folder across restarts (the test uses a stand-in).
+2. Needs a human: the browser's own *save this password?* prompt after the encryption dialogs, how `actions.log` behaves when two devices and a sync service write it, the real folder picker in desktop Chrome (and a real sync service), a **real Takeout export**, a real camera/microphone, a real touch device, a screen reader (VoiceOver/NVDA), and remembering the folder across restarts (the test uses a stand-in).
 
 **Code**
 - The agreed plan (steps 1 to 5) is finished: the Takeout import, export and label list are in `takeout.js`, `export.js` and `labels.js`, every script is strict, and the `galEsc` duplicate is gone.
-
-**Documentation**
-- `google-keep-image-layout-spec.md`: the viewer section and its test table (11.5) no longer match the app (see 5.4).
 
 **Minor**
 - While only the saved copy is showing, `Store.mode` reports `'browser'`.
@@ -277,7 +275,7 @@ Chosen from three mockups (A cards and tiles, B one tabbed sheet with list rows,
 
 ---
 
-## 10. Encryption icons (saved, not yet used in the app)
+## 10. Encryption icons (the padlock pair is used; the mask pair is kept, unused)
 
 Two icon pairs for "encryption on / off" on a note, designed on a mockup canvas and kept in `js/util.js` (`PS`, used through the usual `ic(name, size)`). They are **2px outlines** (round caps and joins, `fill: none`, `currentColor`), like the other icons in a note's bottom row, so they are drawn by a stroke branch of `ic()`; the older icons stay filled paths in `P`.
 
